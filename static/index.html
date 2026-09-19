@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EDFlow — ED Operations Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>EDFlow</h1>
+    <p>Emergency Department Operations Dashboard</p>
+  </header>
+
+  <nav class="tab-bar">
+    <button class="tab-button active" data-tab="live-ops">Live Ops</button>
+    <button class="tab-button" data-tab="patients">Patients</button>
+    <button class="tab-button" data-tab="network">Hospital Network</button>
+    <button class="tab-button" data-tab="impact">Impact</button>
+    <button class="tab-button" data-tab="how-it-works">How It Works</button>
+  </nav>
+
+  <main>
+    <section class="tab-content" data-tab-content="live-ops">
+      <div id="headline-metric" class="headline-metric headline-ok">
+        <div class="headline-number" id="headline-breach-count">–</div>
+        <div class="headline-label">Tier 1–2 patients past target wait</div>
+      </div>
+
+      <div id="status-banner" class="status-banner status-green">
+        <span class="status-dot"></span>
+        <div>
+          <strong id="status-level">LOADING…</strong>
+          <p id="status-reason">Fetching current state…</p>
+        </div>
+      </div>
+
+      <div id="relocation-banner" class="relocation-banner hidden">
+        🔀 Relocating patients to: <span id="relocation-destinations"></span>
+      </div>
+
+      <section id="nearby-hospitals-panel" class="nearby-hospitals-panel hidden">
+        <h2>Nearby Hospitals <span class="simulated-badge">Simulated</span></h2>
+        <div id="nearby-hospitals-list"></div>
+      </section>
+
+      <div class="actions">
+        <button id="btn-surge">🚨 Run Surge</button>
+        <button id="btn-reset" class="secondary">🔄 Reset Demo</button>
+        <span id="last-updated" class="last-updated"></span>
+      </div>
+
+      <div class="layout">
+        <section class="cards">
+          <div class="card">
+            <h2>Patients</h2>
+            <div class="stat-row"><span>Total</span><strong id="patients-total">–</strong></div>
+            <div class="stat-row"><span>Waiting</span><strong id="patients-waiting">–</strong></div>
+            <div class="stat-row"><span>In a bed</span><strong id="patients-in-bed">–</strong></div>
+            <div class="stat-row"><span>Avg wait (waiting patients)</span><strong id="avg-wait">–</strong></div>
+          </div>
+
+          <div class="card">
+            <h2>Beds</h2>
+            <div class="stat-row"><span><span id="beds-occupied">–</span> / <span id="beds-total">–</span> occupied</span><strong id="beds-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="beds-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Rooms</h2>
+            <div class="stat-row"><span><span id="rooms-in-use">–</span> / <span id="rooms-total">–</span> in use</span><strong id="rooms-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="rooms-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Nurses</h2>
+            <div class="stat-row"><span><span id="nurses-used">–</span> / <span id="nurses-total">–</span> patient slots filled</span><strong id="nurses-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="nurses-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Physicians</h2>
+            <div class="stat-row"><span><span id="physicians-used">–</span> / <span id="physicians-total">–</span> patient slots filled</span><strong id="physicians-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="physicians-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Arrivals This Session</h2>
+            <div class="stat-row"><span>🚑 Ambulance</span><strong id="arrivals-ambulance">–</strong></div>
+            <div class="stat-row"><span>🚶 Walk-in</span><strong id="arrivals-walkin">–</strong></div>
+            <div class="stat-row"><span>🔀 Relocated</span><strong id="arrivals-relocated">–</strong></div>
+          </div>
+
+          <div class="card">
+            <h2>Hospital Float Pool</h2>
+            <div class="stat-row"><span>Extra nurses available</span><strong id="float-nurses">–</strong></div>
+            <div class="stat-row"><span>Extra physicians available</span><strong id="float-physicians">–</strong></div>
+            <div class="stat-row"><span>Extra rooms available</span><strong id="float-rooms">–</strong></div>
+            <div class="stat-row"><span>Overflow beds available</span><strong id="overflow-beds">–</strong></div>
+          </div>
+        </section>
+
+        <aside class="recommendations-panel">
+          <div class="recommendations-header">
+            <h2>Recommendations</h2>
+            <button id="btn-apply-all" class="apply-all-button">Apply All</button>
+          </div>
+          <div id="recommendations-list"><p class="muted">Loading…</p></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="tab-content hidden" data-tab-content="patients">
+      <section class="breach-breakdown">
+        <h2>Breach Breakdown by Tier</h2>
+        <table class="breach-table">
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Waiting</th>
+              <th>Breached</th>
+              <th>Avg wait</th>
+            </tr>
+          </thead>
+          <tbody id="breach-table-body"></tbody>
+        </table>
+      </section>
+
+      <section class="patients-panel">
+        <button id="toggle-patients" class="toggle-button">
+          👥 Patients This Run (<span id="patients-count">0</span>) <span class="chevron">▾</span>
+        </button>
+        <div id="patients-list-container" class="patients-list-container hidden">
+          <div id="patients-list"></div>
+        </div>
+      </section>
+
+      <section class="breach-breakdown">
+        <h2>Event Log</h2>
+        <div id="event-log-list" class="event-log-list"></div>
+      </section>
+    </section>
+
+    <section class="tab-content hidden" data-tab-content="network">
+      <section class="breach-breakdown">
+        <h2>Hospital Network <span class="simulated-badge">Simulated</span></h2>
+        <div id="network-map" class="network-map"></div>
+      </section>
+
+      <section class="breach-breakdown">
+        <h2>All Facilities</h2>
+        <div id="network-facility-list"></div>
+      </section>
+    </section>
+
+    <section class="tab-content hidden" data-tab-content="impact">
+      <section class="breach-breakdown">
+        <h2>Session Scorecard</h2>
+        <div class="scorecard-grid">
+          <div class="scorecard-tile">
+            <div class="scorecard-value" id="scorecard-peak-wait">–</div>
+            <div class="scorecard-label">Peak avg wait</div>
+          </div>
+          <div class="scorecard-tile">
+            <div class="scorecard-value" id="scorecard-peak-breaches">–</div>
+            <div class="scorecard-label">Peak Tier 1–2 breaches</div>
+          </div>
+          <div class="scorecard-tile">
+            <div class="scorecard-value" id="scorecard-treated">–</div>
+            <div class="scorecard-label">Patients treated</div>
+          </div>
+          <div class="scorecard-tile">
+            <div class="scorecard-value" id="scorecard-recovery">–</div>
+            <div class="scorecard-label">Last recovery time</div>
+          </div>
+          <div class="scorecard-tile">
+            <div class="scorecard-value" id="scorecard-lwbs">–</div>
+            <div class="scorecard-label">Left without being seen</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="breach-breakdown">
+        <h2>Avg Wait Over Time</h2>
+        <canvas id="chart-wait" width="600" height="150" class="trend-chart"></canvas>
+      </section>
+
+      <section class="breach-breakdown">
+        <h2>Tier 1–2 Breaches Over Time</h2>
+        <canvas id="chart-breaches" width="600" height="150" class="trend-chart"></canvas>
+      </section>
+    </section>
+
+    <section class="tab-content hidden" data-tab-content="how-it-works">
+      <section class="breach-breakdown">
+        <h2>How EDFlow Works</h2>
+        <p class="how-it-works-text">
+          EDFlow is a rules-based decision-support demo for emergency
+          department surge management. Nothing here is a real clinical
+          tool — every patient, injury, and nearby facility is synthetic,
+          and every recommendation comes from simple, transparent
+          thresholds, not a machine-learning model.
+        </p>
+
+        <h3>Priority tiers and wait-time targets</h3>
+        <p class="how-it-works-text">
+          Every patient is assigned a priority tier on arrival. The waiting
+          queue is always served in tier order — Tier 1 first — regardless
+          of who arrived first.
+        </p>
+        <table class="breach-table">
+          <thead>
+            <tr><th>Tier</th><th>Meaning</th><th>Target wait</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="tier-badge tier-1">Tier 1</span></td><td>Immediately life-threatening</td><td>Immediate</td></tr>
+            <tr><td><span class="tier-badge tier-2">Tier 2</span></td><td>Emergent</td><td>10 min</td></tr>
+            <tr><td><span class="tier-badge tier-3">Tier 3</span></td><td>Urgent</td><td>30 min</td></tr>
+            <tr><td><span class="tier-badge tier-4">Tier 4</span></td><td>Less urgent</td><td>60 min</td></tr>
+            <tr><td><span class="tier-badge tier-5">Tier 5</span></td><td>Non-urgent</td><td>120 min</td></tr>
+          </tbody>
+        </table>
+
+        <h3>The escalation ladder</h3>
+        <p class="how-it-works-text">
+          When a Tier 1–2 patient is past their target, EDFlow escalates
+          through four rungs, in order, only moving to the next one if the
+          current one can't fully restore targets:
+        </p>
+        <ol class="how-it-works-list">
+          <li><strong>The ED's own resources</strong> — if there's no breach yet, normal discharge turnover is trusted to keep up on its own.</li>
+          <li><strong>Hospital float pool</strong> — pull nurses, physicians, or rooms already available elsewhere in the hospital.</li>
+          <li><strong>Overflow capacity</strong> — stand up extra physical beds within the ED.</li>
+          <li><strong>Relocation</strong> — redirect lower-tier patients to a nearby facility.</li>
+        </ol>
+        <p class="how-it-works-text">
+          Every recommended quantity is capped at what's actually
+          available — EDFlow will never recommend more nurses, rooms, or
+          beds than the reserve it's drawing from actually has.
+        </p>
+
+        <h3>Relocation rules</h3>
+        <ul class="how-it-works-list">
+          <li>Tier 1 patients are never relocated.</li>
+          <li>Lower-tier ambulance arrivals (Tiers 3–5) are relocated first.</li>
+          <li>Destinations are chosen by capability match, then estimated wait for that patient's tier.</li>
+          <li>EDFlow never relocates a patient to a facility that is currently red.</li>
+          <li>Relocation only ever happens with explicit user approval — nothing here is automatic.</li>
+        </ul>
+
+        <h3>Simulated data</h3>
+        <p class="how-it-works-text">
+          All patients, injuries, and nearby-facility data (hospitals and
+          urgent care sites) are entirely synthetic and randomly generated.
+          Nearby facilities run their own simplified simulation that drifts
+          independently over time, so they don't all change together.
+          Nothing in EDFlow reflects a real hospital, real patients, or
+          real capacity.
+        </p>
+      </section>
+    </section>
+  </main>
+
+  <div id="hospital-detail-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-hospital-name">Facility</h2>
+        <button id="modal-close" class="modal-close-button">✕</button>
+      </div>
+
+      <div id="modal-hospital-detail">
+        <div id="modal-headline-metric" class="headline-metric headline-ok">
+          <div class="headline-number" id="modal-headline-breach-count">–</div>
+          <div class="headline-label">Tier 1–2 patients past target wait</div>
+        </div>
+
+        <div id="modal-status-banner" class="status-banner status-green">
+          <span class="status-dot"></span>
+          <div>
+            <strong id="modal-status-level">LOADING…</strong>
+            <p id="modal-status-reason">Fetching current state…</p>
+          </div>
+        </div>
+
+        <section class="breach-breakdown">
+          <h2>Breach Breakdown by Tier</h2>
+          <table class="breach-table">
+            <thead>
+              <tr>
+                <th>Tier</th>
+                <th>Waiting</th>
+                <th>Breached</th>
+                <th>Avg wait</th>
+              </tr>
+            </thead>
+            <tbody id="modal-breach-table-body"></tbody>
+          </table>
+        </section>
+
+        <section class="cards">
+          <div class="card">
+            <h2>Patients</h2>
+            <div class="stat-row"><span>Total</span><strong id="modal-patients-total">–</strong></div>
+            <div class="stat-row"><span>Waiting</span><strong id="modal-patients-waiting">–</strong></div>
+            <div class="stat-row"><span>In a bed</span><strong id="modal-patients-in-bed">–</strong></div>
+            <div class="stat-row"><span>Avg wait (waiting patients)</span><strong id="modal-avg-wait">–</strong></div>
+          </div>
+
+          <div class="card">
+            <h2>Beds</h2>
+            <div class="stat-row"><span><span id="modal-beds-occupied">–</span> / <span id="modal-beds-total">–</span> occupied</span><strong id="modal-beds-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="modal-beds-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Rooms</h2>
+            <div class="stat-row"><span><span id="modal-rooms-in-use">–</span> / <span id="modal-rooms-total">–</span> in use</span><strong id="modal-rooms-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="modal-rooms-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Nurses</h2>
+            <div class="stat-row"><span><span id="modal-nurses-used">–</span> / <span id="modal-nurses-total">–</span> patient slots filled</span><strong id="modal-nurses-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="modal-nurses-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Physicians</h2>
+            <div class="stat-row"><span><span id="modal-physicians-used">–</span> / <span id="modal-physicians-total">–</span> patient slots filled</span><strong id="modal-physicians-pct">–</strong></div>
+            <div class="bar"><div class="bar-fill" id="modal-physicians-bar"></div></div>
+          </div>
+
+          <div class="card">
+            <h2>Arrivals This Session</h2>
+            <div class="stat-row"><span>🚑 Ambulance</span><strong id="modal-arrivals-ambulance">–</strong></div>
+            <div class="stat-row"><span>🚶 Walk-in</span><strong id="modal-arrivals-walkin">–</strong></div>
+          </div>
+
+          <div class="card">
+            <h2>Hospital Float Pool</h2>
+            <div class="stat-row"><span>Extra nurses available</span><strong id="modal-float-nurses">–</strong></div>
+            <div class="stat-row"><span>Extra physicians available</span><strong id="modal-float-physicians">–</strong></div>
+            <div class="stat-row"><span>Extra rooms available</span><strong id="modal-float-rooms">–</strong></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="modal-urgent-care-detail" class="hidden">
+        <div class="card">
+          <h2>Summary</h2>
+          <div class="stat-row"><span>Status</span><strong id="modal-uc-status">–</strong></div>
+          <div class="stat-row"><span>Avg wait</span><strong id="modal-uc-wait">–</strong></div>
+          <div class="stat-row"><span>Beds available</span><strong id="modal-uc-beds">–</strong></div>
+          <div class="stat-row"><span>Travel</span><strong id="modal-uc-travel">–</strong></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="simulated-badge">Simulated</span>
+        <button id="modal-directions-button" class="directions-button">Get directions</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/script.js"></script>
+</body>
+</html>
