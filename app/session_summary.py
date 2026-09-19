@@ -11,6 +11,7 @@ call or depends on anything but the database and other in-memory modules.
 from datetime import datetime
 
 from app.event_log import get_events
+from app.impact_metrics import get_impact_comparison
 from app.network import get_all_facilities_summary
 from app.relocation import get_active_destinations
 from app.reserve import get_float_pool, get_float_pool_used, get_overflow_pool, get_overflow_used
@@ -91,4 +92,5 @@ def build_session_summary(conn, utilization, breach_summary, status):
         "last_recovery_seconds": scorecard["last_recovery_seconds"],
         "currently_in_red": scorecard["currently_in_red"],
         "event_log": get_events(),
+        "impact": get_impact_comparison(conn),
     }

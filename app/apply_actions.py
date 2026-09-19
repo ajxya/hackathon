@@ -7,8 +7,10 @@ the reserve it came from.
 """
 
 import random
+from datetime import datetime
 
 from app.allocation import advance_state
+from app.config import NURSE_MAX_PATIENTS, PHYSICIAN_MAX_PATIENTS
 from app.reserve import decrement_float_pool, decrement_overflow_pool
 
 _SUFFIX_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -24,16 +26,19 @@ def apply_float_pool(conn, quantities):
     nurses_n = quantities.get("nurses", 0)
     physicians_n = quantities.get("physicians", 0)
     rooms_n = quantities.get("rooms", 0)
+    now = datetime.now().isoformat(timespec="seconds")
 
     for _ in range(nurses_n):
         conn.execute(
-            "INSERT INTO nurses (name, status, max_patients, current_patients) VALUES (?, 'available', 4, 0)",
-            (f"Float Nurse {_random_suffix()}",),
+            "INSERT INTO nurses (name, status, max_patients, current_patients, source, added_at) "
+            "VALUES (?, 'available', ?, 0, 'float', ?)",
+            (f"Float Nurse {_random_suffix()}", NURSE_MAX_PATIENTS, now),
         )
     for _ in range(physicians_n):
         conn.execute(
-            "INSERT INTO physicians (name, status, max_patients, current_patients) VALUES (?, 'available', 6, 0)",
-            (f"Float Dr. {_random_suffix()}",),
+            "INSERT INTO physicians (name, status, max_patients, current_patients, source, added_at) "
+            "VALUES (?, 'available', ?, 0, 'float', ?)",
+            (f"Float Dr. {_random_suffix()}", PHYSICIAN_MAX_PATIENTS, now),
         )
     for _ in range(rooms_n):
         room_id = conn.execute(
@@ -41,8 +46,8 @@ def apply_float_pool(conn, quantities):
         ).lastrowid
         for bed_letter in ("A", "B"):
             conn.execute(
-                "INSERT INTO beds (room_id, label, status) VALUES (?, ?, 'available')",
-                (room_id, f"Float Room {_random_suffix()} - Bed {bed_letter}"),
+                "INSERT INTO beds (room_id, label, status, created_at) VALUES (?, ?, 'available', ?)",
+                (room_id, f"Float Room {_random_suffix()} - Bed {bed_letter}", now),
             )
 
     decrement_float_pool(nurses=nurses_n, physicians=physicians_n, rooms=rooms_n)
@@ -68,10 +73,11 @@ def apply_overflow_beds(conn, quantities):
         return 0
 
     room_id = _get_or_create_overflow_room(conn)
+    now = datetime.now().isoformat(timespec="seconds")
     for _ in range(beds_n):
         conn.execute(
-            "INSERT INTO beds (room_id, label, status) VALUES (?, ?, 'available')",
-            (room_id, f"Overflow Bed {_random_suffix()}"),
+            "INSERT INTO beds (room_id, label, status, created_at) VALUES (?, ?, 'available', ?)",
+            (room_id, f"Overflow Bed {_random_suffix()}", now),
         )
 
     decrement_overflow_pool(beds=beds_n)

@@ -186,6 +186,29 @@
       </section>
 
       <section class="breach-breakdown">
+        <h2>Impact of EDFlow <span class="simulated-badge">Simulated comparison</span></h2>
+        <p class="impact-baseline-definition" id="impact-baseline-definition"></p>
+        <div id="impact-no-intervention" class="impact-no-intervention hidden">
+          No recommendations have been applied yet this session, so there's nothing to compare —
+          EDFlow and the baseline are identical so far.
+        </div>
+        <div id="impact-content" class="hidden">
+          <p class="impact-headline" id="impact-headline"></p>
+          <table class="breach-table impact-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Without EDFlow</th>
+                <th>With EDFlow</th>
+                <th>Difference</th>
+              </tr>
+            </thead>
+            <tbody id="impact-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="breach-breakdown">
         <h2>Avg Wait Over Time</h2>
         <canvas id="chart-wait" width="600" height="150" class="trend-chart"></canvas>
       </section>
@@ -314,6 +337,21 @@
           operational information (capacity, staffing, wait times), never
           medical, diagnostic, or treatment advice, and every answer is
           about this simulated dashboard, not a real patient or hospital.
+        </p>
+
+        <h3>Impact of EDFlow (simulated comparison)</h3>
+        <p class="how-it-works-text">
+          Behind the scenes, a second, parallel copy of this ED runs on
+          the exact same arrivals — same patients, same tiers, same
+          arrival times, same length of stay — but never gets a float
+          nurse, an overflow bed, or a relocation. It represents this ED
+          using only its own staff and beds. The Impact tab and situation
+          report compare the two to show what EDFlow's recommendations
+          actually changed. Both copies use the same discharge logic and
+          the same wait-time formulas as the rest of the dashboard, so the
+          numbers reconcile everywhere — but the comparison itself is
+          entirely simulated: a shadow run of this same synthetic ED, not
+          a real historical control group.
         </p>
       </section>
     </section>

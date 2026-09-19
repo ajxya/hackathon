@@ -1201,3 +1201,43 @@ main {
     width: auto;
   }
 }
+
+/* Impact of EDFlow (Impact tab + situation report) */
+.impact-baseline-definition {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+  line-height: 1.4;
+}
+
+.impact-no-intervention {
+  color: var(--muted);
+  font-size: 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+#impact-content.hidden,
+#impact-no-intervention.hidden {
+  display: none;
+}
+
+.impact-headline {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 1rem;
+  line-height: 1.4;
+}
+
+.impact-table th:not(:first-child),
+.impact-table td:not(:first-child) {
+  text-align: right;
+}
+
+.impact-table td.impact-favorable {
+  color: var(--green);
+  font-weight: 600;
+}

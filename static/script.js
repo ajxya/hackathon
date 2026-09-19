@@ -665,6 +665,64 @@ function renderImpactTab(data) {
 
   drawTrendChart("chart-wait", waitHistory, "#0b3d91");
   drawTrendChart("chart-breaches", breachHistory, "#c0392b");
+
+  renderImpactComparison(data.impact);
+}
+
+// Impact of EDFlow: the with/without-EDFlow comparison card. Uses the
+// exact same `impact` object the situation report reads from
+// GET /api/session-summary, so the two never disagree.
+function renderImpactComparison(impact) {
+  setText("impact-baseline-definition", impact.baseline_definition);
+
+  const noIntervention = document.getElementById("impact-no-intervention");
+  const content = document.getElementById("impact-content");
+
+  if (!impact.any_intervention_applied) {
+    noIntervention.classList.remove("hidden");
+    content.classList.add("hidden");
+    return;
+  }
+
+  noIntervention.classList.add("hidden");
+  content.classList.remove("hidden");
+
+  const headline =
+    impact.without_edflow.tier12_breach_minutes > 0
+      ? `EDFlow reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
+        `${impact.headline.patient_minutes_saved} patient-minutes of waiting.`
+      : `EDFlow saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
+        `(no Tier 1-2 breaches occurred in either scenario).`;
+  setText("impact-headline", headline);
+
+  const rows = [
+    ["Avg wait (min)", "avg_wait_minutes"],
+    ["Peak avg wait (min)", "peak_avg_wait_minutes"],
+    ["Tier 1-2 breach-minutes", "tier12_breach_minutes"],
+    ["Total patient-minutes waited", "total_patient_minutes_waited"],
+    ["Left without being seen", "left_without_being_seen"],
+  ];
+
+  const tbody = document.getElementById("impact-table-body");
+  tbody.innerHTML = "";
+  rows.forEach(([label, key]) => {
+    const diff = impact.difference[key];
+    const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+
+    const tr = document.createElement("tr");
+    const labelCell = document.createElement("td");
+    labelCell.textContent = label;
+    const withoutCell = document.createElement("td");
+    withoutCell.textContent = impact.without_edflow[key];
+    const withCell = document.createElement("td");
+    withCell.textContent = impact.with_edflow[key];
+    const diffCell = document.createElement("td");
+    diffCell.textContent = diffText;
+    if (diff > 0) diffCell.className = "impact-favorable";
+
+    tr.append(labelCell, withoutCell, withCell, diffCell);
+    tbody.appendChild(tr);
+  });
 }
 
 // --- Situation report (Impact tab): a deterministic, template-built
@@ -758,6 +816,41 @@ function buildSituationReportText(summary) {
     );
   } else {
     lines.push(`Still unresolved — status is currently ${summary.status.level.toUpperCase()}.`);
+  }
+  lines.push("");
+
+  lines.push("IMPACT OF EDFLOW (SIMULATED COMPARISON)");
+  lines.push(summary.impact.baseline_definition);
+  if (!summary.impact.any_intervention_applied) {
+    lines.push(
+      "No recommendations have been applied yet this session, so there's nothing to compare — " +
+        "EDFlow and the baseline are identical so far."
+    );
+  } else {
+    const impact = summary.impact;
+    lines.push(
+      impact.without_edflow.tier12_breach_minutes > 0
+        ? `EDFlow reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
+          `${impact.headline.patient_minutes_saved} patient-minutes of waiting.`
+        : `EDFlow saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
+          `(no Tier 1-2 breaches occurred in either scenario).`
+    );
+    lines.push("");
+    lines.push("  Metric                          Without EDFlow   With EDFlow   Difference");
+    const impactRows = [
+      ["Avg wait (min)", "avg_wait_minutes"],
+      ["Peak avg wait (min)", "peak_avg_wait_minutes"],
+      ["Tier 1-2 breach-minutes", "tier12_breach_minutes"],
+      ["Total patient-minutes waited", "total_patient_minutes_waited"],
+      ["Left without being seen", "left_without_being_seen"],
+    ];
+    impactRows.forEach(([label, key]) => {
+      const diff = impact.difference[key];
+      const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+      lines.push(
+        `  ${label.padEnd(31)} ${String(impact.without_edflow[key]).padEnd(17)} ${String(impact.with_edflow[key]).padEnd(13)} ${diffText}`
+      );
+    });
   }
   lines.push("");
 

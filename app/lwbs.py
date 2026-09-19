@@ -26,7 +26,10 @@ def process_lwbs(conn):
         wait_minutes = elapsed_seconds * SIM_MINUTES_PER_REAL_SECOND
         target = TIER_TARGET_MINUTES.get(row["acuity"], 0)
         if target and wait_minutes > target * LWBS_MULTIPLIER:
-            conn.execute("UPDATE patients SET status = 'left_lwbs' WHERE id = ?", (row["id"],))
+            conn.execute(
+                "UPDATE patients SET status = 'left_lwbs', left_at = ? WHERE id = ?",
+                (now.isoformat(timespec="seconds"), row["id"]),
+            )
             left_count += 1
 
     if left_count:

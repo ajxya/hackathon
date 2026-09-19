@@ -6,7 +6,8 @@ generated and fake; no real patient data is used.
 import random
 from datetime import datetime
 
-from app.allocation import advance_state
+from app import baseline_simulation
+from app.allocation import advance_state, draw_los_seconds
 from app.config import ARRIVALS_PER_TICK_MAX, ARRIVALS_PER_TICK_MIN
 from app.database import get_connection
 from app.injuries import random_injury, random_tier
@@ -30,17 +31,28 @@ def create_patient(source, name=None, acuity=None, injury=None):
     tier = acuity or random_tier(source)
     injury = injury or random_injury(tier)
     name = name or generate_patient_name()
-    arrival_time = datetime.now().isoformat(timespec="seconds")
+    arrival_dt = datetime.now()
+    arrival_time = arrival_dt.isoformat(timespec="seconds")
+    # Drawn once, here, at arrival — not redrawn later at placement time —
+    # so the shadow baseline simulation's mirrored copy of this same
+    # patient (see below) gets the exact same length of stay.
+    los_seconds = draw_los_seconds(tier)
 
     cursor = conn.execute(
         """
-        INSERT INTO patients (name, arrival_time, source, acuity, injury, status)
-        VALUES (?, ?, ?, ?, ?, 'waiting')
+        INSERT INTO patients (name, arrival_time, source, acuity, injury, los_seconds, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'waiting')
         """,
-        (name, arrival_time, source, tier, injury),
+        (name, arrival_time, source, tier, injury, los_seconds),
     )
     conn.commit()
     patient_id = cursor.lastrowid
+
+    # Mirror this exact arrival (same tier, same arrival time, same
+    # length of stay) into the shadow baseline simulation — see
+    # app/baseline_simulation.py — before advancing the real ED, so both
+    # get an equivalent chance to place this patient on this same tick.
+    baseline_simulation.arrive(tier, arrival_dt, los_seconds)
 
     # Immediately try to place this new arrival (and process any pending
     # discharges), so the response reflects their real status right away.

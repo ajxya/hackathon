@@ -168,15 +168,46 @@ quality / mission fit / ease — see conversation for the full list):
       200/day) since it's the one endpoint that costs real money on a
       public site. Reset Demo clears the conversation.
 
+**Fixed discharges, retuned capacity, and the shadow baseline comparison:**
+- [x] **Per-patient length of stay** replaced the old fixed-tick/percentage
+      discharge model, which pinned occupancy at 100% during a sustained
+      surge and recovered only slowly afterward (`app/allocation.py`,
+      `TIER_LOS_MINUTES` in `app/config.py`). Beds now go through a short
+      cleaning/turnover delay before reuse.
+- [x] **Float pool auto-return** — idle float staff/rooms and overflow beds
+      return to the reserve automatically once occupancy drops below a
+      threshold, after a short grace period so something isn't handed back
+      the instant it's applied.
+- [x] **Capacity retuned** — nurse/physician headcount cut from ~4.5x bed
+      capacity down to just over 1x, so each resource can genuinely
+      bottleneck in a heavy surge; float pool sizes increased ~50%; all of
+      it moved into `app/config.py`.
+- [x] **Shadow baseline simulation** (`app/baseline_simulation.py`) — a
+      parallel, in-memory copy of the ED that gets the exact same arrivals
+      but never any float pool, overflow, or relocation help, representing
+      "this ED using only its own staff and beds." Fully deterministic
+      (`random.seed(RANDOM_SEED)` on every reset) — the same sequence of
+      actions after a reset produces identical results, every time.
+- [x] **Impact of EDFlow** (`app/impact_metrics.py`) — a simulated,
+      side-by-side comparison (avg wait, peak avg wait, Tier 1-2
+      breach-minutes, total patient-minutes waited, LWBS) on the Impact tab
+      and in the situation report, using the same definitions as the
+      scorecard so the numbers reconcile everywhere.
+- [x] **Verification suite** (`tests/test_simulation.py`) — see
+      "Verification" below.
+
 ## Demo pacing tuned for a live run
 
 - **Capacity**: 10 rooms / 30 beds, with nurse and physician headcount set
-  to 34 and 22 so staffing is never the bottleneck — breaches and
-  recommendations are driven by bed and queue pressure instead.
+  to 10 and 7 (`NURSE_COUNT`/`PHYSICIAN_COUNT` in `app/config.py`) — sized
+  just over bed capacity so beds, rooms, nurses, and physicians can each
+  become the bottleneck in a heavy surge, not just beds.
 - **Arrival rate**: `ARRIVALS_PER_TICK_MIN/MAX` in `app/config.py` is 2-4
   per tick, fast enough that a surge visibly builds up within seconds.
-- **Discharge rate sped up**: `DISCHARGE_TICK_SECONDS` 4 and
-  `DISCHARGE_FRACTION` 0.25, so recovery after a surge is visibly fast too.
+- **Discharge is per-patient, not a fixed batch** — see "Notes on the
+  allocation engine" below; recovery after a surge is visibly fast because
+  lengths of stay are short (`TIER_LOS_MINUTES`), not because of a fixed
+  discharge-rate constant.
 - **"Run Surge" is a manual on/off toggle**, not a fixed-duration timer —
   click to start, click again anytime to stop, and repeat as many times as
   you like.
@@ -214,19 +245,30 @@ quality / mission fit / ease — see conversation for the full list):
   nurse **and** a physician are all free. If any one of those is full, the
   patient stays "waiting" until capacity opens up, in **tier order** (Tier 1
   first, then longest-waiting within a tier).
-- Every `DISCHARGE_TICK_SECONDS` (5s by default — see `app/config.py`), a
-  fraction of currently-admitted patients (oldest-admitted first) are
-  discharged, freeing their bed/nurse/physician back up for the next waiting
-  patient. This check runs on every `GET /state` call, so simply leaving the
-  dashboard open (2-second polling) is enough to see discharges and backfills
-  happen on their own.
+- **Per-patient length of stay** (not a fixed shared schedule): each admitted
+  patient is drawn a length of stay from `TIER_LOS_MINUTES` in
+  `app/config.py` (higher tiers stay longer) the moment they arrive, and is
+  discharged independently once it elapses — so the departure rate rises and
+  falls naturally with how many patients are actually in beds, rather than
+  being capped at a fixed batch size. Freed beds go through a short
+  `BED_TURNOVER_MINUTES` "cleaning" delay before the next patient can use
+  them. This all runs on every `GET /state` call (`app/allocation.py`), so
+  simply leaving the dashboard open (2-second polling) is enough to see
+  discharges and backfills happen on their own.
+- **Float pool auto-return:** once bed occupancy drops below
+  `FLOAT_RETURN_THRESHOLD_PCT`, idle float nurses/physicians/rooms and
+  overflow beds are automatically handed back to the reserve — borrowed
+  capacity doesn't linger once a surge has clearly passed. A
+  `FLOAT_RETURN_GRACE_SECONDS` window stops something from being returned
+  the instant it's applied, before it's ever had a chance to be used.
 - **Compressed clock:** `SIM_MINUTES_PER_REAL_SECOND` in `app/config.py`
   treats 1 real second as 1 simulated minute (a 60x-faster clock), so the
   tier wait-time targets (Tier 1 immediate, Tier 2 10 min, ... Tier 5 120 min)
   translate into real waits of a few seconds to a couple of minutes — fast
   enough to see play out live in a demo.
-- `app/config.py` is the single dial board for pacing: discharge rate,
-  clock speed, tier targets, nurse triage weighting, and surge arrival rate.
+- `app/config.py` is the single dial board for pacing: length of stay per
+  tier, turnover/return timing, clock speed, tier targets, nurse/physician
+  headcount and ratios, float pool sizes, and surge arrival rate.
 - **Concurrency:** the surge (1 request/second) and the dashboard's polling
   (1 request/2 seconds) genuinely run at the same time, so `advance_state()`
   wraps its bed/staff assignment in a `BEGIN IMMEDIATE` transaction — this
@@ -234,3 +276,60 @@ quality / mission fit / ease — see conversation for the full list):
 - **If you pull or write further changes that alter `app/database.py`'s
   schema**, delete `edflow.db` and restart the server — it's just synthetic
   seed data and regenerates automatically; there's no real data to lose.
+
+## Shadow baseline simulation and Impact of EDFlow
+
+- `app/baseline_simulation.py` runs a second, in-memory-only copy of the ED
+  alongside the real one: same arrivals (same tier, arrival time, and
+  length of stay — drawn once and mirrored, never redrawn), same discharge
+  logic, but it never receives a float nurse, an overflow bed, or a
+  relocation. It represents "this ED using only its own staff and beds."
+- `random.seed(RANDOM_SEED)` is re-applied at the start of every demo reset
+  (`app/seed.py`), so the entire random sequence — tier, injury, name,
+  length of stay — is fully deterministic from that point on: running the
+  same sequence of actions after a reset produces identical results, every
+  time (verified in `tests/test_simulation.py`).
+- `app/impact_metrics.py` computes the head-to-head comparison (avg wait,
+  peak avg wait, Tier 1-2 breach-minutes, total patient-minutes waited,
+  left-without-being-seen) using the exact same formulas as the scorecard
+  and breach summary, shown on the Impact tab and in the situation report's
+  "Impact of EDFlow" section. If nothing has been applied yet, both are
+  reported as identical rather than showing noise from two independently-
+  ticking simulations as if it were meaningful.
+
+## Verification
+
+`tests/test_simulation.py` is a small automated suite (plain Python
+`unittest`, no new dependency) covering the invariants from the discharge
+fix, the float-pool auto-return, and the shadow baseline simulation. It
+points `app.database` at its own temporary SQLite file, so it never
+touches your real `edflow.db`. Run it with:
+
+```bash
+source venv/bin/activate
+python3 -m unittest discover -s tests -v
+```
+
+It checks:
+- [x] Bed occupancy never exceeds capacity or goes negative, under load.
+- [x] After a surge ends, waiting reaches 0 and occupancy then declines.
+- [x] Applied float pool / overflow resources return to the reserve.
+- [x] The shadow baseline never grows past its fixed capacity and never
+      relocates a patient — it has no code path that could.
+- [x] The same seeded sequence of actions produces identical results twice.
+- [x] Reset Demo clears everything, including the shadow baseline.
+
+Manually confirmed reconciled end-to-end (scorecard, both trend charts,
+event log, and the situation report's Outcome/Impact sections all showing
+the same numbers for the same session, including "last recovery time"
+completing with a real value instead of staying "in progress"):
+
+- [x] Scorecard's peak avg wait / peak breaches / treated count match the
+      situation report's "Peak during this session" and "Arrivals and
+      throughput" sections exactly.
+- [x] "Last recovery time" completes with a real number (e.g. `30.2s`) and
+      that same number appears in the report's Outcome line.
+- [x] The Impact tab card and the report's "Impact of EDFlow" section show
+      the same headline and table for the same session.
+- [x] The event log's entries match, in order, between the Patients tab,
+      the Impact tab, and the report's Event Log section.

@@ -39,8 +39,11 @@ def get_utilization(conn):
     ).fetchone()
 
     rooms_total = conn.execute("SELECT COUNT(*) AS total FROM rooms").fetchone()["total"]
+    # A room counts as "in use" while any of its beds is occupied OR still
+    # mid-turnover — a bed being cleaned isn't free for the next patient
+    # yet, so the room isn't really available either.
     rooms_in_use = conn.execute(
-        "SELECT COUNT(DISTINCT room_id) AS n FROM beds WHERE status = 'occupied'"
+        "SELECT COUNT(DISTINCT room_id) AS n FROM beds WHERE status IN ('occupied', 'cleaning')"
     ).fetchone()["n"]
 
     waiting_rows = conn.execute(

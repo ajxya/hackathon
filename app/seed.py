@@ -4,8 +4,12 @@ Everything here is fake: made-up names, made-up arrival times. No real
 patient information is used anywhere in this project.
 """
 
+import random
 from datetime import datetime, timedelta
 
+from app import baseline_simulation
+from app.allocation import draw_los_seconds
+from app.config import NURSE_COUNT, NURSE_MAX_PATIENTS, PHYSICIAN_COUNT, PHYSICIAN_MAX_PATIENTS, RANDOM_SEED
 from app.database import get_connection
 from app.injuries import random_injury
 from app.reset_registry import reset_all
@@ -26,10 +30,9 @@ ROOMS = [
 # 3 beds per room x 10 rooms = 30 beds.
 BEDS_PER_ROOM = ("A", "B", "C")
 
-# Staffing set directly per the demo's requested headcounts (34 nurses,
-# 22 physicians) while beds/rooms stay at 30/10 — deliberately more staff
-# than beds would strictly need, so staffing is never the bottleneck and
-# the demo's breaches/recommendations are driven by bed and queue pressure.
+# Name pools — only the first NURSE_COUNT/PHYSICIAN_COUNT (app/config.py)
+# are actually used, so the pools stay larger than needed to leave room to
+# raise those counts later without adding more names.
 NURSE_NAMES = [
     "Nurse Alvarez", "Nurse Kim", "Nurse Patel", "Nurse Johnson", "Nurse Nguyen", "Nurse O'Brien",
     "Nurse Torres", "Nurse Whitfield", "Nurse Baptiste", "Nurse Sato", "Nurse Ferreira", "Nurse Okonkwo",
@@ -86,6 +89,11 @@ def seed(conn):
     request (a surge tick, a dashboard poll) can't read or write in the
     middle of a reset and see a half-wiped database.
     """
+    # Re-seeded first, before reset_all() or any other randomness this
+    # reset might trigger, so every random decision from this point on
+    # (tier assignment, injury, name, length of stay) follows the same
+    # sequence given the same sequence of actions afterward.
+    random.seed(RANDOM_SEED)
     reset_all()
 
     conn.execute("BEGIN IMMEDIATE")
@@ -111,29 +119,35 @@ def seed(conn):
                 )
 
         # Nurses and physicians, all starting available with nobody assigned yet.
-        for name in NURSE_NAMES:
+        for name in NURSE_NAMES[:NURSE_COUNT]:
             conn.execute(
-                "INSERT INTO nurses (name, status, max_patients, current_patients) VALUES (?, 'available', 4, 0)",
-                (name,),
+                "INSERT INTO nurses (name, status, max_patients, current_patients) VALUES (?, 'available', ?, 0)",
+                (name, NURSE_MAX_PATIENTS),
             )
-        for name in PHYSICIAN_NAMES:
+        for name in PHYSICIAN_NAMES[:PHYSICIAN_COUNT]:
             conn.execute(
-                "INSERT INTO physicians (name, status, max_patients, current_patients) VALUES (?, 'available', 6, 0)",
-                (name,),
+                "INSERT INTO physicians (name, status, max_patients, current_patients) VALUES (?, 'available', ?, 0)",
+                (name, PHYSICIAN_MAX_PATIENTS),
             )
 
         beds = conn.execute("SELECT id FROM beds ORDER BY id").fetchall()
         next_free_bed = 0
 
         for name, source, acuity, seconds_ago, in_bed in PATIENTS:
-            arrival_time = (datetime.now() - timedelta(seconds=seconds_ago)).isoformat(timespec="seconds")
+            arrival_dt = datetime.now() - timedelta(seconds=seconds_ago)
+            arrival_time = arrival_dt.isoformat(timespec="seconds")
 
             bed_id = None
             nurse_id = None
             physician_id = None
             bed_assigned_at = None
+            discharge_due_at = None
             status = "waiting"
             injury = random_injury(acuity)
+            # Drawn once, here, and stored — not redrawn at placement time —
+            # so the shadow baseline simulation's copy of this same patient
+            # (see below) can be given the exact same length of stay.
+            los_seconds = draw_los_seconds(acuity)
 
             if in_bed:
                 bed_id = beds[next_free_bed]["id"]
@@ -145,20 +159,22 @@ def seed(conn):
                 physician_id = _assign_least_busy(conn, "physicians")
 
                 bed_assigned_at = arrival_time
+                discharge_due_at = (datetime.now() + timedelta(seconds=los_seconds)).isoformat(timespec="seconds")
 
             conn.execute(
                 """
                 INSERT INTO patients (
-                    name, arrival_time, source, acuity, injury, status,
-                    bed_id, nurse_id, physician_id, bed_assigned_at
+                    name, arrival_time, source, acuity, injury, los_seconds, status,
+                    bed_id, nurse_id, physician_id, bed_assigned_at, discharge_due_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    name, arrival_time, source, acuity, injury, status,
-                    bed_id, nurse_id, physician_id, bed_assigned_at,
+                    name, arrival_time, source, acuity, injury, los_seconds, status,
+                    bed_id, nurse_id, physician_id, bed_assigned_at, discharge_due_at,
                 ),
             )
+            baseline_simulation.arrive(acuity, arrival_dt, los_seconds, force_in_bed=in_bed)
     except Exception:
         conn.execute("ROLLBACK")
         raise

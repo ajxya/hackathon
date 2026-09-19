@@ -7,12 +7,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import baseline_simulation
 from app.allocation import advance_state
 from app.apply_actions import apply_float_pool, apply_overflow_beds
 from app.assistant import get_assistant_reply
 from app.database import get_connection, init_db
 from app.event_log import get_events, log_event, note_status
 from app.facilities_config import HOME_ED
+from app.impact_metrics import get_impact_comparison
 from app.logic import get_breach_summary, get_patients_list, get_recommendations, get_status, get_utilization
 from app.lwbs import get_lwbs_stats
 from app.network import get_all_facilities_summary, get_hospital
@@ -120,6 +122,7 @@ def build_state():
     recommendations = get_recommendations(utilization, breach_summary, float_pool, overflow_pool)
     patients_list = get_patients_list(conn)
     lwbs = get_lwbs_stats(conn)
+    impact = get_impact_comparison(conn)
 
     conn.close()
 
@@ -141,6 +144,7 @@ def build_state():
         "scorecard": get_scorecard(),
         "lwbs": lwbs,
         "patients_list": patients_list,
+        "impact": impact,
     }
 
 
@@ -347,6 +351,15 @@ def api_assistant(payload: AssistantRequest, request: Request):
         payload.message, history, utilization, breach_summary, status, recommendations, session_summary
     )
     return {"reply": reply}
+
+
+@app.get("/api/baseline-snapshot")
+def api_baseline_snapshot():
+    """Aggregate counts for the shadow baseline simulation (Step 4) — the
+    parallel copy of the home ED that never gets float pool, overflow, or
+    relocation help. Provisional/debug shape; Step 5 replaces this with a
+    full comparison endpoint alongside the real ED's own numbers."""
+    return baseline_simulation.get_snapshot()
 
 
 @app.get("/hospitals")

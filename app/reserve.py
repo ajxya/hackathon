@@ -16,6 +16,7 @@ what's available so recommendations can be capped and phrased realistically
 
 import random
 
+from app.config import FLOAT_POOL_NURSES_RANGE, FLOAT_POOL_PHYSICIANS_RANGE, FLOAT_POOL_ROOMS_RANGE, OVERFLOW_BEDS_RANGE
 from app.reset_registry import register_reset
 
 _float_pool = {"nurses_available": 8, "physicians_available": 3, "rooms_available": 3}
@@ -59,13 +60,31 @@ def decrement_overflow_pool(beds=0):
     _overflow_used["beds"] += beds
 
 
+def return_float_pool(nurses=0, physicians=0, rooms=0):
+    """The reverse of decrement_float_pool — an idle float nurse/
+    physician/room that's no longer needed goes back into the reserve
+    (app/allocation.py, once utilization is comfortably low)."""
+    _float_pool["nurses_available"] += nurses
+    _float_pool["physicians_available"] += physicians
+    _float_pool["rooms_available"] += rooms
+    _float_pool_used["nurses"] = max(0, _float_pool_used["nurses"] - nurses)
+    _float_pool_used["physicians"] = max(0, _float_pool_used["physicians"] - physicians)
+    _float_pool_used["rooms"] = max(0, _float_pool_used["rooms"] - rooms)
+
+
+def return_overflow_pool(beds=0):
+    _overflow_pool["overflow_beds_available"] += beds
+    _overflow_used["beds"] = max(0, _overflow_used["beds"] - beds)
+
+
 @register_reset
 def reset_float_pool():
     """Randomize the reserve a bit on each demo reset, so hospital-wide
-    conditions feel like they vary between runs."""
-    _float_pool["nurses_available"] = random.randint(4, 10)
-    _float_pool["physicians_available"] = random.randint(1, 5)
-    _float_pool["rooms_available"] = random.randint(1, 4)
+    conditions feel like they vary between runs. Ranges live in
+    app/config.py."""
+    _float_pool["nurses_available"] = random.randint(*FLOAT_POOL_NURSES_RANGE)
+    _float_pool["physicians_available"] = random.randint(*FLOAT_POOL_PHYSICIANS_RANGE)
+    _float_pool["rooms_available"] = random.randint(*FLOAT_POOL_ROOMS_RANGE)
     _float_pool_used["nurses"] = 0
     _float_pool_used["physicians"] = 0
     _float_pool_used["rooms"] = 0
@@ -73,5 +92,5 @@ def reset_float_pool():
 
 @register_reset
 def reset_overflow_pool():
-    _overflow_pool["overflow_beds_available"] = random.randint(2, 6)
+    _overflow_pool["overflow_beds_available"] = random.randint(*OVERFLOW_BEDS_RANGE)
     _overflow_used["beds"] = 0
