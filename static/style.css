@@ -48,6 +48,10 @@ header p {
   background: var(--primary);
   padding: 0 1.5rem;
   border-bottom: 3px solid rgba(255, 255, 255, 0.15);
+  /* On narrow screens this row is wider than the viewport — scroll the bar
+     itself rather than letting it stretch the whole page (which broke
+     `position: fixed` elements, like the assistant widget, elsewhere). */
+  overflow-x: auto;
 }
 
 .tab-button {
@@ -60,6 +64,7 @@ header p {
   cursor: pointer;
   border-bottom: 3px solid transparent;
   margin-bottom: -3px;
+  flex-shrink: 0;
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -944,5 +949,255 @@ main {
     max-height: none;
     overflow: visible;
     border: none;
+  }
+}
+
+/* Assistant widget: floating button + panel, outside the tab system so it
+   stays put across every tab. Fixed to the bottom-right corner, well clear
+   of the Run Surge / Reset Demo buttons at the top of the page. */
+#assistant-widget {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 500;
+}
+
+.assistant-toggle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.assistant-toggle:hover {
+  transform: scale(1.05);
+  opacity: 0.95;
+}
+
+.assistant-panel {
+  position: absolute;
+  right: 0;
+  bottom: 68px;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 120px));
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.assistant-panel.hidden {
+  display: none;
+}
+
+.assistant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.assistant-header .simulated-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.assistant-header-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.assistant-icon-button {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.assistant-icon-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.assistant-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 160px;
+}
+
+.assistant-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.assistant-chip {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.assistant-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.assistant-message {
+  max-width: 85%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assistant-message.user {
+  align-self: flex-end;
+  background: var(--primary);
+  color: white;
+  border-bottom-right-radius: 2px;
+}
+
+.assistant-message.assistant {
+  align-self: flex-start;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 2px;
+}
+
+.assistant-message.error {
+  align-self: flex-start;
+  background: #fdecea;
+  color: var(--red);
+  border: 1px solid #f5c6cb;
+}
+
+.assistant-typing {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 0.85rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.assistant-typing.hidden {
+  display: none;
+}
+
+.assistant-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: assistant-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.assistant-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.assistant-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes assistant-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.assistant-form {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#assistant-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+#assistant-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+#assistant-send {
+  padding: 0.5rem 0.85rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#assistant-send:hover {
+  opacity: 0.9;
+}
+
+#assistant-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.assistant-disclaimer {
+  margin: 0;
+  padding: 0.5rem 0.85rem 0.75rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  #assistant-widget {
+    right: 12px;
+    bottom: 12px;
+  }
+  /* Anchor directly to the viewport instead of the small toggle-button
+     container, so the panel can never extend past the screen edge. */
+  .assistant-panel {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 80px;
+    width: auto;
   }
 }

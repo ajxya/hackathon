@@ -998,6 +998,7 @@ document.getElementById("btn-reset").addEventListener("click", async (e) => {
   waitHistory = [];
   breachHistory = [];
   clearSituationReport();
+  clearAssistantConversation();
   button.disabled = true;
   try {
     await postAndRefresh("/demo/reset", true);
@@ -1051,6 +1052,130 @@ document.getElementById("modal-close").addEventListener("click", closeHospitalMo
 // Clicking the dark overlay itself (not the modal card) closes it too.
 document.getElementById("hospital-detail-modal").addEventListener("click", (e) => {
   if (e.target.id === "hospital-detail-modal") closeHospitalModal();
+});
+
+// --- Assistant widget (floating chat button + panel): talks to POST
+// /api/assistant. The conversation lives only in this array for the
+// current browser session/tab — nothing is persisted or sent anywhere
+// except as short-term context for the next reply.
+const MAX_ASSISTANT_HISTORY = 6;
+const ASSISTANT_SUGGESTIONS = [
+  "Why is the status red?",
+  "What should I do first?",
+  "Which nearby hospital is best?",
+  "Summarize the last few minutes",
+];
+let assistantHistory = [];
+let assistantRequestInFlight = false;
+
+function renderAssistantSuggestions() {
+  const container = document.getElementById("assistant-messages");
+  const suggestions = document.createElement("div");
+  suggestions.id = "assistant-suggestions";
+  suggestions.className = "assistant-suggestions";
+  ASSISTANT_SUGGESTIONS.forEach((question) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "assistant-chip";
+    chip.dataset.question = question;
+    chip.textContent = question;
+    suggestions.appendChild(chip);
+  });
+  container.appendChild(suggestions);
+}
+
+function appendAssistantMessage(role, content) {
+  const container = document.getElementById("assistant-messages");
+  const suggestions = document.getElementById("assistant-suggestions");
+  if (suggestions) suggestions.remove(); // only shown while the chat is empty
+
+  const bubble = document.createElement("div");
+  bubble.className = `assistant-message ${role}`;
+  bubble.textContent = content;
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+}
+
+function setAssistantTyping(isTyping) {
+  document.getElementById("assistant-typing").classList.toggle("hidden", !isTyping);
+  const container = document.getElementById("assistant-messages");
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendAssistantMessage(message) {
+  const trimmed = message.trim();
+  if (!trimmed || assistantRequestInFlight) return;
+
+  appendAssistantMessage("user", trimmed);
+  assistantRequestInFlight = true;
+  document.getElementById("assistant-send").disabled = true;
+  setAssistantTyping(true);
+
+  try {
+    const res = await fetch("/api/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: trimmed,
+        history: assistantHistory.slice(-MAX_ASSISTANT_HISTORY),
+      }),
+    });
+    const data = await res.json();
+    const reply = data.reply || "Sorry, something went wrong on my end.";
+    appendAssistantMessage("assistant", reply);
+    assistantHistory.push({ role: "user", content: trimmed });
+    assistantHistory.push({ role: "assistant", content: reply });
+    if (assistantHistory.length > MAX_ASSISTANT_HISTORY) {
+      assistantHistory = assistantHistory.slice(-MAX_ASSISTANT_HISTORY);
+    }
+  } catch (err) {
+    appendAssistantMessage("error", "Couldn't reach the assistant just now — please try again.");
+  } finally {
+    setAssistantTyping(false);
+    assistantRequestInFlight = false;
+    document.getElementById("assistant-send").disabled = false;
+  }
+}
+
+function openAssistantPanel() {
+  document.getElementById("assistant-panel").classList.remove("hidden");
+  document.getElementById("assistant-input").focus();
+}
+
+function closeAssistantPanel() {
+  document.getElementById("assistant-panel").classList.add("hidden");
+}
+
+function clearAssistantConversation() {
+  assistantHistory = [];
+  const container = document.getElementById("assistant-messages");
+  container.innerHTML = "";
+  renderAssistantSuggestions();
+}
+
+document.getElementById("assistant-toggle").addEventListener("click", () => {
+  const panel = document.getElementById("assistant-panel");
+  if (panel.classList.contains("hidden")) {
+    openAssistantPanel();
+  } else {
+    closeAssistantPanel();
+  }
+});
+
+document.getElementById("assistant-close").addEventListener("click", closeAssistantPanel);
+document.getElementById("assistant-clear").addEventListener("click", clearAssistantConversation);
+
+document.getElementById("assistant-messages").addEventListener("click", (e) => {
+  const chip = e.target.closest(".assistant-chip");
+  if (chip) sendAssistantMessage(chip.dataset.question);
+});
+
+document.getElementById("assistant-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("assistant-input");
+  const message = input.value;
+  input.value = "";
+  sendAssistantMessage(message);
 });
 
 fetchState();

@@ -288,7 +288,32 @@
           Nearby facilities run their own simplified simulation that drifts
           independently over time, so they don't all change together.
           Nothing in EDFlow reflects a real hospital, real patients, or
-          real capacity.
+          real capacity. The recommendation engine above is, and remains,
+          entirely rules-based — there is no machine-learning model behind
+          it anywhere in EDFlow.
+        </p>
+
+        <h3>Situation report</h3>
+        <p class="how-it-works-text">
+          The "Generate situation report" button on the Impact tab builds
+          a shift-handoff report from a fixed, deterministic template —
+          not an AI model. It reads the same session data the rest of the
+          dashboard is built from, so it always works instantly, offline,
+          and can never disagree with what's on screen.
+        </p>
+
+        <h3>EDFlow Assistant</h3>
+        <p class="how-it-works-text">
+          The chat button in the bottom-right corner is a small AI-backed
+          assistant that explains the current simulated state and the
+          rules-based recommendations shown above, and can answer
+          questions or summarize recent activity. It only explains and
+          answers questions — it never makes a decision or takes an
+          action itself; every real change still requires the user to
+          click "Apply" in the dashboard. It also only ever gives
+          operational information (capacity, staffing, wait times), never
+          medical, diagnostic, or treatment advice, and every answer is
+          about this simulated dashboard, not a real patient or hospital.
         </p>
       </section>
     </section>
@@ -392,6 +417,49 @@
         <span class="simulated-badge">Simulated</span>
         <button id="modal-directions-button" class="directions-button">Get directions</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Assistant widget: a floating button + panel that sits outside the tab
+       system entirely, so it's visible and stays open across every tab. -->
+  <div id="assistant-widget">
+    <button id="assistant-toggle" class="assistant-toggle" aria-label="Open EDFlow assistant">💬</button>
+
+    <div id="assistant-panel" class="assistant-panel hidden">
+      <div class="assistant-header">
+        <span>EDFlow Assistant <span class="simulated-badge">Simulated</span></span>
+        <div class="assistant-header-actions">
+          <button id="assistant-clear" class="assistant-icon-button" title="Clear conversation">🗑</button>
+          <button id="assistant-close" class="assistant-icon-button" title="Close">✕</button>
+        </div>
+      </div>
+
+      <div id="assistant-messages" class="assistant-messages">
+        <div id="assistant-suggestions" class="assistant-suggestions">
+          <button class="assistant-chip" data-question="Why is the status red?">Why is the status red?</button>
+          <button class="assistant-chip" data-question="What should I do first?">What should I do first?</button>
+          <button class="assistant-chip" data-question="Which nearby hospital is best?">Which nearby hospital is best?</button>
+          <button class="assistant-chip" data-question="Summarize the last few minutes">Summarize the last few minutes</button>
+        </div>
+      </div>
+
+      <div id="assistant-typing" class="assistant-typing hidden">
+        <span class="assistant-typing-dot"></span>
+        <span class="assistant-typing-dot"></span>
+        <span class="assistant-typing-dot"></span>
+      </div>
+
+      <form id="assistant-form" class="assistant-form">
+        <input
+          id="assistant-input"
+          type="text"
+          placeholder="Ask about the current state…"
+          maxlength="500"
+          autocomplete="off"
+        />
+        <button type="submit" id="assistant-send">Send</button>
+      </form>
+      <p class="assistant-disclaimer">Simulated data. Operational info only, not medical advice.</p>
     </div>
   </div>
 

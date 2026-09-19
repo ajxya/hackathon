@@ -3,12 +3,13 @@
 Run with:  uvicorn app.main:app --reload
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.allocation import advance_state
 from app.apply_actions import apply_float_pool, apply_overflow_beds
+from app.assistant import get_assistant_reply
 from app.database import get_connection, init_db
 from app.event_log import get_events, log_event, note_status
 from app.facilities_config import HOME_ED
@@ -16,9 +17,10 @@ from app.logic import get_breach_summary, get_patients_list, get_recommendations
 from app.lwbs import get_lwbs_stats
 from app.network import get_all_facilities_summary, get_hospital
 from app.patients import create_patient, run_arrival_tick
+from app.rate_limit import check_rate_limit
 from app.relocation import get_active_destinations, relocate_patients
 from app.reserve import get_float_pool, get_overflow_pool
-from app.schemas import AmbulanceRequest, CheckInRequest
+from app.schemas import AmbulanceRequest, AssistantRequest, CheckInRequest
 from app.scorecard import get_scorecard, note as note_scorecard
 from app.seed import seed, seed_if_empty
 from app.session_summary import build_session_summary
@@ -302,6 +304,49 @@ def api_session_summary():
     summary = build_session_summary(conn, utilization, breach_summary, status)
     conn.close()
     return summary
+
+
+def _client_ip(request: Request):
+    """Best-effort real client IP for rate limiting. Render (and most
+    hosts) put the original visitor's address first in X-Forwarded-For;
+    request.client.host alone would just be the proxy's address."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@app.post("/api/assistant")
+def api_assistant(payload: AssistantRequest, request: Request):
+    """Ask the EDFlow assistant a question about the current simulated
+    state. Never performs an action itself, never gives medical advice,
+    and always answers from the same shared session summary and live
+    state the dashboard itself uses — see app/assistant.py.
+
+    Rate-limited per IP (see app/rate_limit.py) since this is the one
+    endpoint in the app that costs real money. A limited or failed
+    request still returns 200 with a friendly `reply`, so the frontend
+    never needs special-case error handling."""
+    allowed, reason = check_rate_limit(_client_ip(request))
+    if not allowed:
+        return {"reply": reason}
+
+    conn = get_connection()
+    advance_state(conn)
+    utilization = get_utilization(conn)
+    breach_summary = get_breach_summary(conn)
+    status = get_status(utilization, breach_summary)
+    float_pool = get_float_pool()
+    overflow_pool = get_overflow_pool()
+    recommendations = get_recommendations(utilization, breach_summary, float_pool, overflow_pool)
+    session_summary = build_session_summary(conn, utilization, breach_summary, status)
+    conn.close()
+
+    history = [turn.model_dump() for turn in payload.history]
+    reply = get_assistant_reply(
+        payload.message, history, utilization, breach_summary, status, recommendations, session_summary
+    )
+    return {"reply": reply}
 
 
 @app.get("/hospitals")

@@ -34,6 +34,24 @@ Then open your browser to:
 - Health check: http://127.0.0.1:8000/health
 - Interactive API docs: http://127.0.0.1:8000/docs
 
+## Optional: turning on the EDFlow Assistant
+
+The chat widget (bottom-right corner) works without any setup — it just
+replies with a friendly "not configured" message until you give it an API
+key. To actually connect it to a model, set these environment variables
+before starting the server (or as Environment Variables in Render's
+dashboard for the live deployment):
+
+```bash
+export ASSISTANT_API_KEY="sk-..."          # required
+export ASSISTANT_API_BASE="https://api.openai.com/v1"   # optional, this is the default
+export ASSISTANT_MODEL="gpt-4o-mini"       # optional, this is the default
+```
+
+Any OpenAI-compatible chat-completions provider works — just point
+`ASSISTANT_API_BASE` and `ASSISTANT_MODEL` at it. The key is read on the
+server only (`app/assistant.py`) and is never sent to the browser.
+
 Press `Ctrl+C` in the terminal to stop the server.
 
 ## Project status
@@ -123,6 +141,32 @@ quality / mission fit / ease — see conversation for the full list):
 - [x] **Left-without-being-seen (LWBS)** — Tier 4-5 patients whose wait
       exceeds 2x their target eventually leave (`app/lwbs.py`), adding a
       real cost to inaction and feeding the Impact tab's LWBS rate.
+
+**Shift handoff report + EDFlow Assistant:**
+- [x] Shared session summary (`app/session_summary.py`, `GET
+      /api/session-summary`) — one structured snapshot (duration, peaks
+      with timestamps, breach/arrival/throughput counts, float/overflow
+      usage, active relocation, nearby facility statuses, full event log)
+      that both the situation report and the assistant read from, so
+      neither can ever disagree with the dashboard or each other.
+- [x] **Situation report** (Impact tab) — a "Generate situation report"
+      button builds a full shift-handoff report from a fixed,
+      deterministic template (no AI, no network call beyond the app's own
+      API) — header, status, peaks, breaches by tier, arrivals/
+      throughput, actions taken, outcome, handoff notes, and the full
+      event log. Copy / Download (.txt) / Print, with a clean print
+      stylesheet. Reset Demo clears it.
+- [x] **EDFlow Assistant** — a floating chat widget (every tab) backed by
+      `POST /api/assistant`. Answers only from the same shared session
+      summary and live state (no patient-level data sent), suggests
+      actions but never performs one, gives operational information only
+      (never medical advice), and always names itself as simulated. The
+      LLM call is isolated in one function (`app/assistant.py`) so the
+      provider/model swap through environment variables alone; a missing
+      key or a failed/slow call always falls back to a friendly message,
+      never an error. Per-IP rate limited (`app/rate_limit.py`, 10/min,
+      200/day) since it's the one endpoint that costs real money on a
+      public site. Reset Demo clears the conversation.
 
 ## Demo pacing tuned for a live run
 
