@@ -915,19 +915,133 @@ main {
   font-weight: 600;
 }
 
-.situation-report-text {
+/* Situation report: rendered as a real document, not a plain-text dump —
+   deliberately reuses the dashboard's own components (status banner,
+   scorecard tiles, breach table, event log rows) so it reads as a
+   natural extension of the app rather than a separate wall of text. */
+.report-doc {
+  max-height: 640px;
+  overflow-y: auto;
+  padding: 0.25rem 0.25rem 0;
+}
+
+.report-doc-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.report-doc-title {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--text);
+}
+
+.report-doc-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.report-doc h3 {
+  margin: 1.75rem 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.report-doc h3:first-of-type {
+  margin-top: 0;
+}
+
+.report-doc .status-banner {
+  margin-bottom: 0;
+}
+
+.report-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.report-stat-tile {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.82rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 480px;
-  overflow-y: auto;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.report-stat-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.report-stat-label {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.report-doc .event-log-list {
+  max-height: 220px;
+}
+
+.report-doc .event-log-list.report-actions-list {
+  max-height: none;
+}
+
+.report-muted-line {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.report-outcome {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.report-outcome-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.report-outcome.is-good {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.report-outcome.is-open {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.report-doc .impact-baseline-definition {
+  margin-top: 0;
+}
+
+.report-doc ul.report-notes-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
   color: var(--text);
+}
+
+.report-doc ul.report-notes-list li {
+  margin-bottom: 0.35rem;
 }
 
 /* Printing only the report: hide everything else on the page. */
@@ -945,10 +1059,20 @@ main {
     left: 0;
     width: 100%;
   }
-  .situation-report-text {
+  .report-doc {
     max-height: none;
     overflow: visible;
-    border: none;
+  }
+  .report-doc .event-log-list {
+    max-height: none;
+    overflow: visible;
+  }
+  /* Printed status/outcome colors don't survive most browsers' default
+     print settings unless explicitly forced. */
+  .status-banner,
+  .report-outcome {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 

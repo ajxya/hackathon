@@ -566,6 +566,22 @@ function renderRelocationBanner(relocation) {
   banner.classList.remove("hidden");
 }
 
+function createEventLogRow(event) {
+  const row = document.createElement("div");
+  row.className = "event-log-row";
+
+  const time = document.createElement("span");
+  time.className = "event-log-time";
+  time.textContent = event.time;
+
+  const message = document.createElement("span");
+  message.className = "event-log-message";
+  message.textContent = event.message;
+
+  row.append(time, message);
+  return row;
+}
+
 function renderEventLog(containerId, events) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -579,22 +595,7 @@ function renderEventLog(containerId, events) {
     return;
   }
 
-  events.forEach((event) => {
-    const row = document.createElement("div");
-    row.className = "event-log-row";
-
-    const time = document.createElement("span");
-    time.className = "event-log-time";
-    time.textContent = event.time;
-
-    const message = document.createElement("span");
-    message.className = "event-log-message";
-    message.textContent = event.message;
-
-    row.appendChild(time);
-    row.appendChild(message);
-    container.appendChild(row);
-  });
+  events.forEach((event) => container.appendChild(createEventLogRow(event)));
 }
 
 function drawTrendChart(canvasId, dataPoints, color) {
@@ -895,6 +896,228 @@ function buildSituationReportText(summary) {
   return lines.join("\n");
 }
 
+// --- Situation report: rendered document (on-screen + print) ---
+// Deliberately built from the dashboard's own components (status banner,
+// scorecard tiles, breach table, event log rows) rather than a plain-text
+// dump, so it reads as a natural part of the app. Copy/Download still use
+// buildSituationReportText() above — a portable plain-text version for
+// pasting into email/Slack.
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+function buildReportStatTile(value, label) {
+  const tile = el("div", "report-stat-tile");
+  tile.appendChild(el("div", "report-stat-value", value));
+  tile.appendChild(el("div", "report-stat-label", label));
+  return tile;
+}
+
+function buildReportImpactSection(impact) {
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(el("p", "impact-baseline-definition", impact.baseline_definition));
+
+  if (!impact.any_intervention_applied) {
+    fragment.appendChild(
+      el(
+        "div",
+        "impact-no-intervention",
+        "No recommendations have been applied yet this session, so there's nothing to compare — " +
+          "EDFlow and the baseline are identical so far."
+      )
+    );
+    return fragment;
+  }
+
+  const headlineText =
+    impact.without_edflow.tier12_breach_minutes > 0
+      ? `EDFlow reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
+        `${impact.headline.patient_minutes_saved} patient-minutes of waiting.`
+      : `EDFlow saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
+        `(no Tier 1-2 breaches occurred in either scenario).`;
+  fragment.appendChild(el("p", "impact-headline", headlineText));
+
+  const table = document.createElement("table");
+  table.className = "breach-table impact-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["Metric", "Without EDFlow", "With EDFlow", "Difference"].forEach((h) => headRow.appendChild(el("th", null, h)));
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  const impactRows = [
+    ["Avg wait (min)", "avg_wait_minutes"],
+    ["Peak avg wait (min)", "peak_avg_wait_minutes"],
+    ["Tier 1-2 breach-minutes", "tier12_breach_minutes"],
+    ["Total patient-minutes waited", "total_patient_minutes_waited"],
+    ["Left without being seen", "left_without_being_seen"],
+  ];
+  impactRows.forEach(([label, key]) => {
+    const diff = impact.difference[key];
+    const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+    const tr = document.createElement("tr");
+    tr.append(
+      el("td", null, label),
+      el("td", null, String(impact.without_edflow[key])),
+      el("td", null, String(impact.with_edflow[key])),
+      el("td", diff > 0 ? "impact-favorable" : null, diffText)
+    );
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  fragment.appendChild(table);
+  return fragment;
+}
+
+function renderSituationReportDoc(summary) {
+  const container = document.getElementById("situation-report-doc");
+  container.innerHTML = "";
+
+  const generated = new Date(summary.generated_at).toLocaleString();
+
+  const titleRow = el("div", "report-doc-title-row");
+  const titleBlock = document.createElement("div");
+  titleBlock.appendChild(el("h2", "report-doc-title", "Shift Situation Report"));
+  titleBlock.appendChild(
+    el(
+      "p",
+      "report-doc-meta",
+      `Generated ${generated} · ${formatDuration(summary.session.duration_seconds)} into this session · Simulated data`
+    )
+  );
+  titleRow.appendChild(titleBlock);
+  container.appendChild(titleRow);
+
+  // Current status — the exact same banner component as Live Ops.
+  const banner = el("div", `status-banner status-${summary.status.level}`);
+  banner.appendChild(el("span", "status-dot"));
+  const bannerText = document.createElement("div");
+  bannerText.appendChild(el("strong", null, summary.status.level.toUpperCase()));
+  bannerText.appendChild(el("p", null, summary.status.reason));
+  banner.append(bannerText);
+  container.appendChild(banner);
+
+  container.appendChild(el("h3", null, "Peak during this session"));
+  const peakGrid = el("div", "report-stat-grid");
+  peakGrid.append(
+    buildReportStatTile(
+      `${summary.peak.avg_wait_minutes} min`,
+      `Peak avg wait${summary.peak.avg_wait_at ? ` · at ${summary.peak.avg_wait_at}` : ""}`
+    ),
+    buildReportStatTile(
+      String(summary.peak.tier12_breaches),
+      `Peak Tier 1-2 breaches${summary.peak.tier12_breaches_at ? ` · at ${summary.peak.tier12_breaches_at}` : ""}`
+    )
+  );
+  container.appendChild(peakGrid);
+
+  container.appendChild(el("h3", null, "Breaches by tier"));
+  const breachTable = document.createElement("table");
+  breachTable.className = "breach-table";
+  const breachHead = document.createElement("thead");
+  const breachHeadRow = document.createElement("tr");
+  ["Tier", "Waiting", "Breached", "Avg wait"].forEach((h) => breachHeadRow.appendChild(el("th", null, h)));
+  breachHead.appendChild(breachHeadRow);
+  breachTable.appendChild(breachHead);
+  const breachBody = document.createElement("tbody");
+  for (let tier = 1; tier <= 5; tier++) {
+    const t = summary.breach_summary.by_tier[tier];
+    const tr = document.createElement("tr");
+    tr.append(
+      el("td", null, `Tier ${tier}`),
+      el("td", null, String(t.waiting)),
+      el("td", t.breached > 0 ? "breach-count-nonzero" : null, String(t.breached)),
+      el("td", null, `${t.avg_wait_minutes} min`)
+    );
+    breachBody.appendChild(tr);
+  }
+  breachTable.appendChild(breachBody);
+  container.appendChild(breachTable);
+
+  container.appendChild(el("h3", null, "Arrivals and throughput"));
+  const arrivalsGrid = el("div", "report-stat-grid");
+  [
+    [summary.arrivals.ambulance, "Ambulance arrivals"],
+    [summary.arrivals.walk_in, "Walk-in arrivals"],
+    [summary.arrivals.total, "Total arrivals"],
+    [summary.treated, "Treated"],
+    [summary.left_without_being_seen, "Left without being seen"],
+    [summary.relocated, "Relocated"],
+  ].forEach(([value, label]) => arrivalsGrid.appendChild(buildReportStatTile(String(value), label)));
+  container.appendChild(arrivalsGrid);
+
+  container.appendChild(el("h3", null, "Actions taken"));
+  const actions = summary.event_log.filter((e) => e.message.startsWith("Applied:"));
+  if (actions.length === 0) {
+    container.appendChild(el("p", "report-muted-line", "No actions were applied this session."));
+  } else {
+    const actionsList = el("div", "event-log-list report-actions-list");
+    actions.forEach((e) => actionsList.appendChild(createEventLogRow(e)));
+    container.appendChild(actionsList);
+  }
+
+  container.appendChild(el("h3", null, "Outcome"));
+  const recovered = summary.status.level === "green" && !summary.currently_in_red;
+  const outcome = el("p", `report-outcome ${recovered ? "is-good" : "is-open"}`);
+  outcome.appendChild(el("span", "report-outcome-icon", recovered ? "✓" : "⚠"));
+  outcome.appendChild(
+    el(
+      "span",
+      null,
+      recovered
+        ? summary.last_recovery_seconds !== null
+          ? `Recovered — the last red episode lasted ${summary.last_recovery_seconds}s before returning to green.`
+          : "No red episode occurred this session."
+        : `Still unresolved — status is currently ${summary.status.level.toUpperCase()}.`
+    )
+  );
+  container.appendChild(outcome);
+
+  const impactHeading = el("h3", null, "Impact of EDFlow ");
+  impactHeading.appendChild(el("span", "simulated-badge", "Simulated comparison"));
+  container.appendChild(impactHeading);
+  container.appendChild(buildReportImpactSection(summary.impact));
+
+  container.appendChild(el("h3", null, "Handoff notes for incoming shift"));
+  const notes = [];
+  if (summary.breach_summary.tier1_2_breaches > 0) {
+    notes.push(`${summary.breach_summary.tier1_2_breaches} Tier 1-2 patient(s) still past target wait.`);
+  }
+  const floatUsed = summary.float_pool_used;
+  const floatUsedParts = [];
+  if (floatUsed.nurses) floatUsedParts.push(`${floatUsed.nurses} nurse(s)`);
+  if (floatUsed.physicians) floatUsedParts.push(`${floatUsed.physicians} physician(s)`);
+  if (floatUsed.rooms) floatUsedParts.push(`${floatUsed.rooms} room(s)`);
+  if (floatUsedParts.length) notes.push(`Float pool still in use: ${floatUsedParts.join(", ")}.`);
+  if (summary.overflow_used.beds) notes.push(`Overflow beds still in use: ${summary.overflow_used.beds}.`);
+  if (summary.active_relocation_destinations.length) {
+    notes.push(`Active relocation to: ${summary.active_relocation_destinations.join(", ")}.`);
+  }
+  const watchFacilities = summary.nearby_facilities.filter((f) => f.status === "yellow" || f.status === "red");
+  if (watchFacilities.length) {
+    notes.push(`Nearby facilities to watch: ${watchFacilities.map((f) => `${f.name} (${f.status})`).join(", ")}.`);
+  }
+  if (notes.length === 0) notes.push("No outstanding concerns for the incoming shift.");
+  const notesList = document.createElement("ul");
+  notesList.className = "report-notes-list";
+  notes.forEach((note) => notesList.appendChild(el("li", null, note)));
+  container.appendChild(notesList);
+
+  container.appendChild(el("h3", null, "Event log"));
+  if (summary.event_log.length === 0) {
+    container.appendChild(el("p", "report-muted-line", "No events recorded this session."));
+  } else {
+    const logList = el("div", "event-log-list");
+    [...summary.event_log].reverse().forEach((e) => logList.appendChild(createEventLogRow(e)));
+    container.appendChild(logList);
+  }
+}
+
 async function generateSituationReport() {
   const emptyState = document.getElementById("situation-report-empty");
   const card = document.getElementById("situation-report-card");
@@ -912,14 +1135,14 @@ async function generateSituationReport() {
   }
 
   currentReportText = buildSituationReportText(summary);
-  document.getElementById("situation-report-text").textContent = currentReportText;
+  renderSituationReportDoc(summary);
   emptyState.classList.add("hidden");
   card.classList.remove("hidden");
 }
 
 function clearSituationReport() {
   currentReportText = "";
-  document.getElementById("situation-report-text").textContent = "";
+  document.getElementById("situation-report-doc").innerHTML = "";
   document.getElementById("situation-report-card").classList.add("hidden");
   document.getElementById("situation-report-empty").classList.add("hidden");
   const feedback = document.getElementById("report-copy-feedback");
