@@ -8,6 +8,10 @@ integrations.
 **Stack:** Python + FastAPI (backend and API) + SQLite (database) + plain
 HTML/CSS/JavaScript (frontend), all served by one server.
 
+**Live demo:** https://edflow-ilc9.onrender.com
+(hosted on Render's free tier — it spins down after inactivity, so the
+first load after a while can take up to 50 seconds to wake up)
+
 ## Setup (do this once)
 
 ```bash
