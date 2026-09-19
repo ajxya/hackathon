@@ -21,6 +21,7 @@ from app.reserve import get_float_pool, get_overflow_pool
 from app.schemas import AmbulanceRequest, CheckInRequest
 from app.scorecard import get_scorecard, note as note_scorecard
 from app.seed import seed, seed_if_empty
+from app.session_summary import build_session_summary
 
 app = FastAPI(title="EDFlow")
 
@@ -285,6 +286,22 @@ def apply_relocation():
     advance_state(conn)  # let the freed-up queue positions backfill immediately
     conn.close()
     return build_state()
+
+
+@app.get("/api/session-summary")
+def api_session_summary():
+    """Structured snapshot of the whole current session — one shared
+    source of truth for both the situation report and the assistant, so
+    neither can ever show numbers that disagree with the dashboard or
+    with each other. See app/session_summary.py."""
+    conn = get_connection()
+    advance_state(conn)
+    utilization = get_utilization(conn)
+    breach_summary = get_breach_summary(conn)
+    status = get_status(utilization, breach_summary)
+    summary = build_session_summary(conn, utilization, breach_summary, status)
+    conn.close()
+    return summary
 
 
 @app.get("/hospitals")

@@ -566,9 +566,9 @@ function renderRelocationBanner(relocation) {
   banner.classList.remove("hidden");
 }
 
-function renderEventLog(events) {
-  const container = document.getElementById("event-log-list");
-  if (!container) return; // only present on the Patients tab
+function renderEventLog(containerId, events) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
   container.innerHTML = "";
 
   if (!events || events.length === 0) {
@@ -667,6 +667,217 @@ function renderImpactTab(data) {
   drawTrendChart("chart-breaches", breachHistory, "#c0392b");
 }
 
+// --- Situation report (Impact tab): a deterministic, template-built
+// shift-handoff report from GET /api/session-summary. No AI call, no
+// dependency on the assistant — it reads the same shared summary the
+// dashboard itself is built from, so it can never disagree with it, and
+// it works even if the assistant/LLM call in Step 3 is unavailable.
+let currentReportText = "";
+
+function formatDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const parts = [];
+  if (h) parts.push(`${h}h`);
+  if (h || m) parts.push(`${m}m`);
+  parts.push(`${sec}s`);
+  return parts.join(" ");
+}
+
+function summaryHasNoActivity(summary) {
+  return (
+    summary.event_log.length === 0 &&
+    summary.treated === 0 &&
+    summary.relocated === 0 &&
+    summary.left_without_being_seen === 0 &&
+    summary.peak.avg_wait_minutes === 0 &&
+    summary.peak.tier12_breaches === 0
+  );
+}
+
+function buildSituationReportText(summary) {
+  const lines = [];
+  const generated = new Date(summary.generated_at).toLocaleString();
+
+  lines.push("EDFLOW SITUATION REPORT");
+  lines.push(`Generated: ${generated}  •  Session duration: ${formatDuration(summary.session.duration_seconds)}`);
+  lines.push("Simulated data — for demo purposes only, not a real clinical record.");
+  lines.push("");
+
+  lines.push("CURRENT STATUS");
+  lines.push(
+    `${summary.status.level.toUpperCase()} — ${summary.breach_summary.tier1_2_breaches} Tier 1-2 patient(s) past target wait`
+  );
+  lines.push(summary.status.reason);
+  lines.push("");
+
+  lines.push("PEAK DURING THIS SESSION");
+  lines.push(
+    `Peak avg wait: ${summary.peak.avg_wait_minutes} min` +
+      (summary.peak.avg_wait_at ? ` (at ${summary.peak.avg_wait_at})` : "")
+  );
+  lines.push(
+    `Peak Tier 1-2 breaches: ${summary.peak.tier12_breaches}` +
+      (summary.peak.tier12_breaches_at ? ` (at ${summary.peak.tier12_breaches_at})` : "")
+  );
+  lines.push("");
+
+  lines.push("BREACHES BY TIER");
+  for (let tier = 1; tier <= 5; tier++) {
+    const t = summary.breach_summary.by_tier[tier];
+    lines.push(`Tier ${tier}: ${t.waiting} waiting, ${t.breached} breached, avg wait ${t.avg_wait_minutes} min`);
+  }
+  lines.push("");
+
+  lines.push("ARRIVALS AND THROUGHPUT");
+  lines.push(`Ambulance arrivals: ${summary.arrivals.ambulance}`);
+  lines.push(`Walk-in arrivals: ${summary.arrivals.walk_in}`);
+  lines.push(`Total arrivals: ${summary.arrivals.total}`);
+  lines.push(`Treated (discharged): ${summary.treated}`);
+  lines.push(`Left without being seen: ${summary.left_without_being_seen}`);
+  lines.push(`Relocated: ${summary.relocated}`);
+  lines.push("");
+
+  lines.push("ACTIONS TAKEN");
+  const actions = summary.event_log.filter((e) => e.message.startsWith("Applied:"));
+  if (actions.length === 0) {
+    lines.push("No actions were applied this session.");
+  } else {
+    actions.forEach((e) => lines.push(`- ${e.time} — ${e.message}`));
+  }
+  lines.push("");
+
+  lines.push("OUTCOME");
+  if (summary.status.level === "green" && !summary.currently_in_red) {
+    lines.push(
+      summary.last_recovery_seconds !== null
+        ? `Recovered — the last red episode lasted ${summary.last_recovery_seconds}s before returning to green.`
+        : "No red episode occurred this session."
+    );
+  } else {
+    lines.push(`Still unresolved — status is currently ${summary.status.level.toUpperCase()}.`);
+  }
+  lines.push("");
+
+  lines.push("HANDOFF NOTES FOR INCOMING SHIFT");
+  const notes = [];
+  if (summary.breach_summary.tier1_2_breaches > 0) {
+    notes.push(`${summary.breach_summary.tier1_2_breaches} Tier 1-2 patient(s) still past target wait.`);
+  }
+  const floatUsed = summary.float_pool_used;
+  const floatUsedParts = [];
+  if (floatUsed.nurses) floatUsedParts.push(`${floatUsed.nurses} nurse(s)`);
+  if (floatUsed.physicians) floatUsedParts.push(`${floatUsed.physicians} physician(s)`);
+  if (floatUsed.rooms) floatUsedParts.push(`${floatUsed.rooms} room(s)`);
+  if (floatUsedParts.length) {
+    notes.push(`Float pool still in use: ${floatUsedParts.join(", ")}.`);
+  }
+  if (summary.overflow_used.beds) {
+    notes.push(`Overflow beds still in use: ${summary.overflow_used.beds}.`);
+  }
+  if (summary.active_relocation_destinations.length) {
+    notes.push(`Active relocation to: ${summary.active_relocation_destinations.join(", ")}.`);
+  }
+  const watchFacilities = summary.nearby_facilities.filter((f) => f.status === "yellow" || f.status === "red");
+  if (watchFacilities.length) {
+    notes.push(`Nearby facilities to watch: ${watchFacilities.map((f) => `${f.name} (${f.status})`).join(", ")}.`);
+  }
+  if (notes.length === 0) {
+    notes.push("No outstanding concerns for the incoming shift.");
+  }
+  notes.forEach((note) => lines.push(`- ${note}`));
+  lines.push("");
+
+  lines.push("EVENT LOG");
+  if (summary.event_log.length === 0) {
+    lines.push("No events recorded this session.");
+  } else {
+    // Stored newest-first; show chronologically (oldest first) in the
+    // report, the way a real handoff log would read top to bottom.
+    [...summary.event_log].reverse().forEach((e) => lines.push(`${e.time}  ${e.message}`));
+  }
+
+  return lines.join("\n");
+}
+
+async function generateSituationReport() {
+  const emptyState = document.getElementById("situation-report-empty");
+  const card = document.getElementById("situation-report-card");
+  const feedback = document.getElementById("report-copy-feedback");
+  feedback.textContent = "";
+
+  const res = await fetch("/api/session-summary");
+  const summary = await res.json();
+
+  if (summaryHasNoActivity(summary)) {
+    emptyState.classList.remove("hidden");
+    card.classList.add("hidden");
+    currentReportText = "";
+    return;
+  }
+
+  currentReportText = buildSituationReportText(summary);
+  document.getElementById("situation-report-text").textContent = currentReportText;
+  emptyState.classList.add("hidden");
+  card.classList.remove("hidden");
+}
+
+function clearSituationReport() {
+  currentReportText = "";
+  document.getElementById("situation-report-text").textContent = "";
+  document.getElementById("situation-report-card").classList.add("hidden");
+  document.getElementById("situation-report-empty").classList.add("hidden");
+  const feedback = document.getElementById("report-copy-feedback");
+  if (feedback) feedback.textContent = "";
+}
+
+document.getElementById("btn-generate-report").addEventListener("click", generateSituationReport);
+
+document.getElementById("btn-report-copy").addEventListener("click", async () => {
+  const feedback = document.getElementById("report-copy-feedback");
+  try {
+    await navigator.clipboard.writeText(currentReportText);
+    feedback.textContent = "Copied!";
+  } catch (err) {
+    // Clipboard API unavailable (e.g. insecure context) — fall back to a
+    // temporary textarea and the older execCommand copy.
+    const textarea = document.createElement("textarea");
+    textarea.value = currentReportText;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      feedback.textContent = "Copied!";
+    } catch (err2) {
+      feedback.textContent = "Copy failed — select and copy manually.";
+    }
+    document.body.removeChild(textarea);
+  }
+  setTimeout(() => {
+    feedback.textContent = "";
+  }, 2500);
+});
+
+document.getElementById("btn-report-download").addEventListener("click", () => {
+  const blob = new Blob([currentReportText], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `edflow-situation-report-${Date.now()}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("btn-report-print").addEventListener("click", () => {
+  window.print();
+});
+
 function render(data) {
   renderHospitalWidgets("", data);
   renderStatusBanner("", data.status);
@@ -679,7 +890,8 @@ function render(data) {
   renderPatientsList(data.patients_list);
   renderBreachSummary("", data.breach_summary);
   renderRelocationBanner(data.relocation);
-  renderEventLog(data.event_log);
+  renderEventLog("event-log-list", data.event_log);
+  renderEventLog("impact-event-log-list", data.event_log);
   renderImpactTab(data);
 
   latestBreachSummary = data.breach_summary;
@@ -785,6 +997,7 @@ document.getElementById("btn-reset").addEventListener("click", async (e) => {
   }
   waitHistory = [];
   breachHistory = [];
+  clearSituationReport();
   button.disabled = true;
   try {
     await postAndRefresh("/demo/reset", true);

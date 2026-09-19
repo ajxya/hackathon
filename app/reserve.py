@@ -21,6 +21,12 @@ from app.reset_registry import register_reset
 _float_pool = {"nurses_available": 8, "physicians_available": 3, "rooms_available": 3}
 _overflow_pool = {"overflow_beds_available": 3}
 
+# Running totals of how much has actually been pulled this session, for the
+# situation report / assistant ("currently in use") — separate from the
+# pools above, which only track what's still left.
+_float_pool_used = {"nurses": 0, "physicians": 0, "rooms": 0}
+_overflow_used = {"beds": 0}
+
 
 def get_float_pool():
     return dict(_float_pool)
@@ -30,15 +36,27 @@ def get_overflow_pool():
     return dict(_overflow_pool)
 
 
+def get_float_pool_used():
+    return dict(_float_pool_used)
+
+
+def get_overflow_used():
+    return dict(_overflow_used)
+
+
 def decrement_float_pool(nurses=0, physicians=0, rooms=0):
     """Actually check reserves out of the pool (Apply button, Step 3+)."""
     _float_pool["nurses_available"] = max(0, _float_pool["nurses_available"] - nurses)
     _float_pool["physicians_available"] = max(0, _float_pool["physicians_available"] - physicians)
     _float_pool["rooms_available"] = max(0, _float_pool["rooms_available"] - rooms)
+    _float_pool_used["nurses"] += nurses
+    _float_pool_used["physicians"] += physicians
+    _float_pool_used["rooms"] += rooms
 
 
 def decrement_overflow_pool(beds=0):
     _overflow_pool["overflow_beds_available"] = max(0, _overflow_pool["overflow_beds_available"] - beds)
+    _overflow_used["beds"] += beds
 
 
 @register_reset
@@ -48,8 +66,12 @@ def reset_float_pool():
     _float_pool["nurses_available"] = random.randint(4, 10)
     _float_pool["physicians_available"] = random.randint(1, 5)
     _float_pool["rooms_available"] = random.randint(1, 4)
+    _float_pool_used["nurses"] = 0
+    _float_pool_used["physicians"] = 0
+    _float_pool_used["rooms"] = 0
 
 
 @register_reset
 def reset_overflow_pool():
     _overflow_pool["overflow_beds_available"] = random.randint(2, 6)
+    _overflow_used["beds"] = 0

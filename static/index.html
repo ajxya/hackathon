@@ -194,6 +194,34 @@
         <h2>Tier 1–2 Breaches Over Time</h2>
         <canvas id="chart-breaches" width="600" height="150" class="trend-chart"></canvas>
       </section>
+
+      <section class="breach-breakdown">
+        <div class="report-header-row">
+          <h2>Shift Handoff Report <span class="simulated-badge">Simulated</span></h2>
+          <button id="btn-generate-report" class="apply-all-button">📋 Generate situation report</button>
+        </div>
+
+        <div id="situation-report-empty" class="hidden">
+          No activity to report yet. Run a surge first.
+        </div>
+
+        <div id="situation-report-card" class="situation-report-card hidden">
+          <div class="situation-report-toolbar">
+            <button id="btn-report-copy" class="apply-button">Copy</button>
+            <button id="btn-report-download" class="apply-button">Download (.txt)</button>
+            <button id="btn-report-print" class="apply-button">Print</button>
+            <span id="report-copy-feedback" class="report-copy-feedback"></span>
+          </div>
+          <div id="situation-report-print-area">
+            <pre id="situation-report-text" class="situation-report-text"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="breach-breakdown">
+        <h2>Event Log</h2>
+        <div id="impact-event-log-list" class="event-log-list"></div>
+      </section>
     </section>
 
     <section class="tab-content hidden" data-tab-content="how-it-works">
