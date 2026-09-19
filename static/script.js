@@ -687,10 +687,13 @@ function render(data) {
   updateNearbyHospitalsPanel();
 }
 
-async function fetchState() {
+async function fetchState(force = false) {
   // Skip this tick if a previous fetch is still in flight (e.g. a slow
-  // network), so requests don't pile up on top of each other.
-  if (fetchInProgress) return;
+  // network), so requests don't pile up on top of each other. `force`
+  // bypasses that guard — used right after an action (like Reset Demo)
+  // that must always show its own result, even if a surge tick or the
+  // background poll happened to be mid-flight at that exact moment.
+  if (fetchInProgress && !force) return;
   fetchInProgress = true;
   try {
     const res = await fetch("/state");
@@ -701,21 +704,29 @@ async function fetchState() {
   }
 }
 
-async function postAndRefresh(endpoint) {
+async function postAndRefresh(endpoint, force = false) {
   await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
   });
-  await fetchState();
+  await fetchState(force);
 }
 
+// Tracks whichever surge tick request is currently in flight, so Reset
+// Demo can wait for it to fully land before wiping the database — closes
+// the race where a tick's patient gets inserted right after a reset.
+let currentTickPromise = null;
+
 async function runSurgeTick() {
-  try {
-    await postAndRefresh("/simulate/tick");
-  } catch (e) {
-    console.error("Surge tick failed", e);
-  }
+  currentTickPromise = (async () => {
+    try {
+      await postAndRefresh("/simulate/tick");
+    } catch (e) {
+      console.error("Surge tick failed", e);
+    }
+  })();
+  await currentTickPromise;
 }
 
 function startSurge() {
@@ -755,14 +766,30 @@ document.getElementById("btn-surge").addEventListener("click", () => {
 });
 
 document.getElementById("btn-reset").addEventListener("click", async (e) => {
+  // Can be clicked any time, any number of times, even mid-surge: it stops
+  // the surge, waits for any surge tick that was already in flight to fully
+  // land (so its patient can't sneak in right after the wipe), then forces
+  // a fresh screen refresh (see the `force` flag on fetchState) so the
+  // dashboard never gets stuck showing stale pre-reset numbers.
+  //
+  // The button is captured into a variable BEFORE any `await` — `e.currentTarget`
+  // is reset to null by the browser once the event finishes dispatching,
+  // which happens as soon as this handler crosses its first `await`. Using
+  // `e.currentTarget` after that point throws (setting a property on null),
+  // which — inside a `finally` — permanently skipped `disabled = false` and
+  // left this button stuck disabled after its very first click.
+  const button = e.currentTarget;
   stopSurge();
+  if (currentTickPromise) {
+    await currentTickPromise;
+  }
   waitHistory = [];
   breachHistory = [];
-  e.currentTarget.disabled = true;
+  button.disabled = true;
   try {
-    await postAndRefresh("/demo/reset");
+    await postAndRefresh("/demo/reset", true);
   } finally {
-    e.currentTarget.disabled = false;
+    button.disabled = false;
   }
 });
 
@@ -771,13 +798,16 @@ document.getElementById("toggle-patients").addEventListener("click", () => {
 });
 
 document.getElementById("btn-apply-all").addEventListener("click", async (e) => {
-  e.currentTarget.disabled = true;
-  e.currentTarget.textContent = "Applying…";
+  // Same `currentTarget`-after-`await` pitfall as the reset button above —
+  // capture the element first so re-enabling it in `finally` doesn't throw.
+  const button = e.currentTarget;
+  button.disabled = true;
+  button.textContent = "Applying…";
   try {
     await applyAllRecommendations();
   } finally {
-    e.currentTarget.disabled = false;
-    e.currentTarget.textContent = "Apply All";
+    button.disabled = false;
+    button.textContent = "Apply All";
   }
 });
 

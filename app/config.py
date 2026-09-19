@@ -32,5 +32,5 @@ PHYSICIAN_TRIAGE_WEIGHT = 0.15
 # Surge button: how many patients arrive per simulated second. The surge
 # itself now runs indefinitely (start/stop toggle in the UI) rather than a
 # fixed duration, so there's no "how long it lasts" constant here anymore.
-ARRIVALS_PER_TICK_MIN = 1
-ARRIVALS_PER_TICK_MAX = 3
+ARRIVALS_PER_TICK_MIN = 2
+ARRIVALS_PER_TICK_MAX = 4

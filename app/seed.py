@@ -26,17 +26,23 @@ ROOMS = [
 # 3 beds per room x 10 rooms = 30 beds.
 BEDS_PER_ROOM = ("A", "B", "C")
 
-# Nurse/physician headcount scaled up to match the larger bed count
-# (30 beds, same ~10-beds : 6-nurses : 3-physicians ratio as before), so
-# staffing doesn't become a premature bottleneck the moment beds grow.
+# Staffing set directly per the demo's requested headcounts (34 nurses,
+# 22 physicians) while beds/rooms stay at 30/10 — deliberately more staff
+# than beds would strictly need, so staffing is never the bottleneck and
+# the demo's breaches/recommendations are driven by bed and queue pressure.
 NURSE_NAMES = [
     "Nurse Alvarez", "Nurse Kim", "Nurse Patel", "Nurse Johnson", "Nurse Nguyen", "Nurse O'Brien",
     "Nurse Torres", "Nurse Whitfield", "Nurse Baptiste", "Nurse Sato", "Nurse Ferreira", "Nurse Okonkwo",
     "Nurse Delgado", "Nurse Hassan", "Nurse Novak", "Nurse Iwu", "Nurse Larsen", "Nurse Mbeki",
+    "Nurse Grant", "Nurse Petrov", "Nurse Salas", "Nurse Wren", "Nurse Achebe", "Nurse Doyle",
+    "Nurse Fontaine", "Nurse Amaral", "Nurse Csaki", "Nurse Nabors", "Nurse Osei", "Nurse Vance",
+    "Nurse Ibarra", "Nurse Kessler", "Nurse Duarte", "Nurse Lund",
 ]
 PHYSICIAN_NAMES = [
     "Dr. Chen", "Dr. Okafor", "Dr. Rossi", "Dr. Yamamoto", "Dr. Osei", "Dr. Kowalczyk",
-    "Dr. Haddad", "Dr. Lindgren", "Dr. Adeyemi",
+    "Dr. Haddad", "Dr. Lindgren", "Dr. Adeyemi", "Dr. Marsh", "Dr. Bianchi", "Dr. Kimura",
+    "Dr. Novak", "Dr. Farah", "Dr. Whitaker", "Dr. Solis", "Dr. Petrova", "Dr. Odom",
+    "Dr. Salinas", "Dr. Berg", "Dr. Achterberg", "Dr. Nwosu",
 ]
 
 # (name, source, tier 1-5, seconds_ago arrived, should_be_in_bed)
@@ -74,81 +80,90 @@ def seed(conn):
     discharge clock, the float pool, and anything future modules register)
     — so adding a new stateful module later doesn't require touching this
     function.
+
+    The wipe-and-reinsert runs inside one BEGIN IMMEDIATE transaction, the
+    same pattern app/allocation.py uses for advance_state — so a concurrent
+    request (a surge tick, a dashboard poll) can't read or write in the
+    middle of a reset and see a half-wiped database.
     """
     reset_all()
 
-    conn.executescript(
-        """
-        DELETE FROM patients;
-        DELETE FROM beds;
-        DELETE FROM nurses;
-        DELETE FROM physicians;
-        DELETE FROM rooms;
-        """
-    )
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # Individual execute() calls, not executescript() — executescript()
+        # implicitly commits any open transaction before running, which
+        # would silently end the BEGIN IMMEDIATE above.
+        conn.execute("DELETE FROM patients")
+        conn.execute("DELETE FROM beds")
+        conn.execute("DELETE FROM nurses")
+        conn.execute("DELETE FROM physicians")
+        conn.execute("DELETE FROM rooms")
 
-    # Rooms, and BEDS_PER_ROOM beds in each.
-    for room_name, room_type in ROOMS:
-        room_id = conn.execute(
-            "INSERT INTO rooms (name, room_type) VALUES (?, ?)", (room_name, room_type)
-        ).lastrowid
-        for bed_letter in BEDS_PER_ROOM:
+        # Rooms, and BEDS_PER_ROOM beds in each.
+        for room_name, room_type in ROOMS:
+            room_id = conn.execute(
+                "INSERT INTO rooms (name, room_type) VALUES (?, ?)", (room_name, room_type)
+            ).lastrowid
+            for bed_letter in BEDS_PER_ROOM:
+                conn.execute(
+                    "INSERT INTO beds (room_id, label, status) VALUES (?, ?, 'available')",
+                    (room_id, f"{room_name} - Bed {bed_letter}"),
+                )
+
+        # Nurses and physicians, all starting available with nobody assigned yet.
+        for name in NURSE_NAMES:
             conn.execute(
-                "INSERT INTO beds (room_id, label, status) VALUES (?, ?, 'available')",
-                (room_id, f"{room_name} - Bed {bed_letter}"),
+                "INSERT INTO nurses (name, status, max_patients, current_patients) VALUES (?, 'available', 4, 0)",
+                (name,),
+            )
+        for name in PHYSICIAN_NAMES:
+            conn.execute(
+                "INSERT INTO physicians (name, status, max_patients, current_patients) VALUES (?, 'available', 6, 0)",
+                (name,),
             )
 
-    # Nurses and physicians, all starting available with nobody assigned yet.
-    for name in NURSE_NAMES:
-        conn.execute(
-            "INSERT INTO nurses (name, status, max_patients, current_patients) VALUES (?, 'available', 4, 0)",
-            (name,),
-        )
-    for name in PHYSICIAN_NAMES:
-        conn.execute(
-            "INSERT INTO physicians (name, status, max_patients, current_patients) VALUES (?, 'available', 6, 0)",
-            (name,),
-        )
+        beds = conn.execute("SELECT id FROM beds ORDER BY id").fetchall()
+        next_free_bed = 0
 
-    beds = conn.execute("SELECT id FROM beds ORDER BY id").fetchall()
-    next_free_bed = 0
+        for name, source, acuity, seconds_ago, in_bed in PATIENTS:
+            arrival_time = (datetime.now() - timedelta(seconds=seconds_ago)).isoformat(timespec="seconds")
 
-    for name, source, acuity, seconds_ago, in_bed in PATIENTS:
-        arrival_time = (datetime.now() - timedelta(seconds=seconds_ago)).isoformat(timespec="seconds")
+            bed_id = None
+            nurse_id = None
+            physician_id = None
+            bed_assigned_at = None
+            status = "waiting"
+            injury = random_injury(acuity)
 
-        bed_id = None
-        nurse_id = None
-        physician_id = None
-        bed_assigned_at = None
-        status = "waiting"
-        injury = random_injury(acuity)
+            if in_bed:
+                bed_id = beds[next_free_bed]["id"]
+                next_free_bed += 1
+                conn.execute("UPDATE beds SET status = 'occupied' WHERE id = ?", (bed_id,))
+                status = "in_bed"
 
-        if in_bed:
-            bed_id = beds[next_free_bed]["id"]
-            next_free_bed += 1
-            conn.execute("UPDATE beds SET status = 'occupied' WHERE id = ?", (bed_id,))
-            status = "in_bed"
+                nurse_id = _assign_least_busy(conn, "nurses")
+                physician_id = _assign_least_busy(conn, "physicians")
 
-            nurse_id = _assign_least_busy(conn, "nurses")
-            physician_id = _assign_least_busy(conn, "physicians")
+                bed_assigned_at = arrival_time
 
-            bed_assigned_at = arrival_time
-
-        conn.execute(
-            """
-            INSERT INTO patients (
-                name, arrival_time, source, acuity, injury, status,
-                bed_id, nurse_id, physician_id, bed_assigned_at
+            conn.execute(
+                """
+                INSERT INTO patients (
+                    name, arrival_time, source, acuity, injury, status,
+                    bed_id, nurse_id, physician_id, bed_assigned_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name, arrival_time, source, acuity, injury, status,
+                    bed_id, nurse_id, physician_id, bed_assigned_at,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                name, arrival_time, source, acuity, injury, status,
-                bed_id, nurse_id, physician_id, bed_assigned_at,
-            ),
-        )
-
-    conn.commit()
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    else:
+        conn.execute("COMMIT")
 
 
 def _assign_least_busy(conn, table):

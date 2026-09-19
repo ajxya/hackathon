@@ -36,6 +36,16 @@
         </div>
       </div>
 
+      <!-- Fixed right after the status banner, before any panel whose
+           presence toggles on/off (relocation banner, nearby hospitals) —
+           so these buttons never shift position as the page's content
+           above them grows or shrinks. -->
+      <div class="actions">
+        <button id="btn-surge">🚨 Run Surge</button>
+        <button id="btn-reset" class="secondary">🔄 Reset Demo</button>
+        <span id="last-updated" class="last-updated"></span>
+      </div>
+
       <div id="relocation-banner" class="relocation-banner hidden">
         🔀 Relocating patients to: <span id="relocation-destinations"></span>
       </div>
@@ -44,12 +54,6 @@
         <h2>Nearby Hospitals <span class="simulated-badge">Simulated</span></h2>
         <div id="nearby-hospitals-list"></div>
       </section>
-
-      <div class="actions">
-        <button id="btn-surge">🚨 Run Surge</button>
-        <button id="btn-reset" class="secondary">🔄 Reset Demo</button>
-        <span id="last-updated" class="last-updated"></span>
-      </div>
 
       <div class="layout">
         <section class="cards">

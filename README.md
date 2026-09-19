@@ -126,19 +126,26 @@ quality / mission fit / ease — see conversation for the full list):
 
 ## Demo pacing tuned for a live run
 
-- **Capacity**: 10 rooms / 30 beds (up from 5/10), with nurse and physician
-  headcount scaled up to match (18 nurses, 9 physicians) so staffing
-  doesn't become an artificial bottleneck the moment beds grew.
-- **Arrival rate slowed**: `ARRIVALS_PER_TICK_MIN/MAX` in `app/config.py`
-  dropped from 2-5/tick to 1-3/tick, so a surge builds up gradually instead
-  of saturating the ED in a few seconds.
-- **Discharge rate sped up**: `DISCHARGE_TICK_SECONDS` 5→4 and
-  `DISCHARGE_FRACTION` 0.2→0.25, so recovery after a surge is visibly
-  faster too.
-- **"Run Surge" is now a manual on/off toggle**, not a fixed 30-second
-  timer — click to start, click again anytime to stop, and repeat as many
-  times as you like. This gives full control over exactly how long a surge
-  runs during a live demo.
+- **Capacity**: 10 rooms / 30 beds, with nurse and physician headcount set
+  to 34 and 22 so staffing is never the bottleneck — breaches and
+  recommendations are driven by bed and queue pressure instead.
+- **Arrival rate**: `ARRIVALS_PER_TICK_MIN/MAX` in `app/config.py` is 2-4
+  per tick, fast enough that a surge visibly builds up within seconds.
+- **Discharge rate sped up**: `DISCHARGE_TICK_SECONDS` 4 and
+  `DISCHARGE_FRACTION` 0.25, so recovery after a surge is visibly fast too.
+- **"Run Surge" is a manual on/off toggle**, not a fixed-duration timer —
+  click to start, click again anytime to stop, and repeat as many times as
+  you like.
+- **"Avg wait (waiting patients)"** is a simple flat 5 minutes per patient
+  in the queue (`app/logic.py`), not a realistic queue/service-rate
+  projection — a "realistic" number stayed close to zero whenever beds
+  were turning over quickly, which hid the recommendation ladder and
+  Impact tab behind numbers too small to notice. This is explicitly a
+  demo-legibility choice, not a claim of clinical accuracy.
+- **Reset Demo** can be clicked any time, any number of times, including
+  mid-surge — it always stops the surge and forces a full screen refresh,
+  and the underlying database wipe/reseed runs as one atomic transaction
+  (`app/seed.py`) so a surge tick can't land mid-reset.
 
 ## Notes on the nearby-facility network
 

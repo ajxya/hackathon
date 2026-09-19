@@ -8,8 +8,6 @@ this demo, not real clinical or hospital-operations standards.
 from datetime import datetime
 
 from app.config import (
-    DISCHARGE_FRACTION,
-    DISCHARGE_TICK_SECONDS,
     NURSE_TRIAGE_WEIGHT,
     PHYSICIAN_TRIAGE_WEIGHT,
     SIM_MINUTES_PER_REAL_SECOND,
@@ -75,23 +73,14 @@ def get_utilization(conn):
     physician_capacity_used = min(round(physician_workload_units), physician_capacity_total)
     physician_pct = min(_pct(physician_workload_units, physician_capacity_total), 100.0)
 
-    # Projected average wait: based on each waiting patient's position in
-    # the priority queue and how fast beds are currently being freed up —
-    # not just how long they personally have been waiting so far. This is
-    # what makes it climb quickly as the queue grows, instead of staying
-    # artificially low right after a burst of new arrivals.
-    service_rate_per_sec = (beds["occupied"] * DISCHARGE_FRACTION) / DISCHARGE_TICK_SECONDS if beds["occupied"] else 0
-    if patients_waiting and service_rate_per_sec > 0:
-        projected_waits = [
-            ((i + 1) / service_rate_per_sec) * SIM_MINUTES_PER_REAL_SECOND for i in range(patients_waiting)
-        ]
-        avg_wait_minutes = round(sum(projected_waits) / len(projected_waits), 1)
-    elif patients_waiting:
-        # Nobody is being discharged right now (e.g. no beds occupied yet) —
-        # fall back to a simple per-patient estimate so this isn't just 0.
-        avg_wait_minutes = round(patients_waiting * 5.0, 1)
-    else:
-        avg_wait_minutes = 0.0
+    # Displayed average wait: a flat 5 minutes per patient in the waiting
+    # queue. This is deliberately simple rather than a realistic queue/
+    # service-rate projection — a "real" projection stays close to zero
+    # whenever beds are turning over quickly, which hid the demo's own
+    # escalation ladder and Impact tab behind numbers too small to notice.
+    # A flat per-patient number climbs predictably as the queue grows, so
+    # the recommendations and trend charts have something to visibly react to.
+    avg_wait_minutes = round(patients_waiting * 5.0, 1)
 
     return {
         "beds": {
