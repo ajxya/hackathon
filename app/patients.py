@@ -63,10 +63,14 @@ def create_patient(source, name=None, acuity=None, injury=None):
     return dict(patient)
 
 
-def run_arrival_tick():
-    """Simulate one second of a surge: several patients arrive at once,
-    randomly split between ambulance and walk-in."""
-    count = random.randint(ARRIVALS_PER_TICK_MIN, ARRIVALS_PER_TICK_MAX)
+def run_arrival_tick(count=None):
+    """Simulate one tick of a surge: `count` patients arrive at once,
+    randomly split between ambulance and walk-in. `count` normally comes
+    from app/surge.py's ramp profile (see POST /simulate/tick); it defaults
+    to the old flat per-tick range here only so code that calls this
+    directly without an active surge (existing tests) keeps working."""
+    if count is None:
+        count = random.randint(ARRIVALS_PER_TICK_MIN, ARRIVALS_PER_TICK_MAX)
     created = []
     for _ in range(count):
         source = random.choice(["walk-in", "ambulance"])

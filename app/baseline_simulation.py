@@ -165,7 +165,7 @@ def _process_discharges(now):
 
 def _process_lwbs(now):
     for patient in _patients.values():
-        if patient["status"] != "waiting" or patient["tier"] not in (4, 5):
+        if patient["status"] != "waiting" or patient["tier"] not in (3, 4, 5):
             continue
         elapsed_seconds = max((now - patient["arrival_time"]).total_seconds(), 0)
         wait_minutes = elapsed_seconds * SIM_MINUTES_PER_REAL_SECOND

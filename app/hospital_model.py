@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from app.config import (
     DISCHARGE_FRACTION,
     DISCHARGE_TICK_SECONDS,
+    MAX_ESTIMATED_WAIT_MINUTES,
     NURSE_TRIAGE_WEIGHT,
     PHYSICIAN_TRIAGE_WEIGHT,
     SIM_MINUTES_PER_REAL_SECOND,
@@ -123,17 +124,30 @@ class SimulatedHospital:
         self.waiting_by_tier[tier] += 1
 
     def _estimate_avg_wait(self, patients_waiting):
+        """A projection, not a real elapsed-time measurement — this facility
+        is aggregate-only (no named patients to time), so this is the one
+        legitimate use of a queue-length / service-rate estimate left in the
+        app. Clamped to MAX_ESTIMATED_WAIT_MINUTES so a facility with very
+        few beds occupied can't project an arbitrarily long wait for its
+        last waiting patient."""
+        if not patients_waiting:
+            return 0.0
+
+        # DISCHARGE_TICK_SECONDS is a fixed positive constant, so this is
+        # never a near-zero division — it's exactly 0 (guarded below) or
+        # bounded below by DISCHARGE_FRACTION / DISCHARGE_TICK_SECONDS.
         service_rate_per_sec = (
             (self.beds_occupied * DISCHARGE_FRACTION) / DISCHARGE_TICK_SECONDS if self.beds_occupied else 0
         )
-        if patients_waiting and service_rate_per_sec > 0:
+        if service_rate_per_sec > 0:
             projected = [
                 ((i + 1) / service_rate_per_sec) * SIM_MINUTES_PER_REAL_SECOND for i in range(patients_waiting)
             ]
-            return round(sum(projected) / len(projected), 1)
-        if patients_waiting:
-            return round(patients_waiting * 5.0, 1)
-        return 0.0
+            estimate = sum(projected) / len(projected)
+        else:
+            estimate = patients_waiting * 5.0
+
+        return round(min(estimate, MAX_ESTIMATED_WAIT_MINUTES), 1)
 
     def _breach_summary(self):
         total_waiting = sum(self.waiting_by_tier.values())

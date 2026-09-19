@@ -1,15 +1,18 @@
 """EDFlow left-without-being-seen (LWBS) — low-tier patients who wait far
 beyond their target eventually leave rather than continue waiting
-indefinitely. A simple, rules-based realism feature: only Tiers 4-5 are
-eligible (more severe tiers are assumed to stay), and only once their wait
-is at least double their tier's target.
+indefinitely. A simple, rules-based realism feature: only Tiers 3-5 are
+eligible (Tiers 1-2 are assumed to stay no matter how long the wait), and
+only once their wait is at least double their tier's target — which also
+caps how long a low-tier wait can climb before it's naturally resolved.
 """
 
 from datetime import datetime
 
 from app.config import SIM_MINUTES_PER_REAL_SECOND, TIER_TARGET_MINUTES
+from app.event_log import log_event
 
 LWBS_MULTIPLIER = 2  # leaves once wait exceeds 2x their tier's target
+LWBS_ELIGIBLE_TIERS = (3, 4, 5)
 
 
 def process_lwbs(conn):
@@ -17,7 +20,7 @@ def process_lwbs(conn):
     many left during this pass."""
     now = datetime.now()
     rows = conn.execute(
-        "SELECT id, acuity, arrival_time FROM patients WHERE status = 'waiting' AND acuity IN (4, 5)"
+        "SELECT id, acuity, arrival_time FROM patients WHERE status = 'waiting' AND acuity IN (3, 4, 5)"
     ).fetchall()
 
     left_count = 0
@@ -31,6 +34,7 @@ def process_lwbs(conn):
                 (now.isoformat(timespec="seconds"), row["id"]),
             )
             left_count += 1
+            log_event(f"Tier {row['acuity']} patient left without being seen after {round(wait_minutes)} min waiting")
 
     if left_count:
         conn.commit()
@@ -42,7 +46,7 @@ def get_lwbs_stats(conn):
         """
         SELECT
             SUM(CASE WHEN status = 'left_lwbs' THEN 1 ELSE 0 END) AS left_count,
-            SUM(CASE WHEN acuity IN (4, 5) THEN 1 ELSE 0 END) AS eligible_total
+            SUM(CASE WHEN acuity IN (3, 4, 5) THEN 1 ELSE 0 END) AS eligible_total
         FROM patients
         """
     ).fetchone()

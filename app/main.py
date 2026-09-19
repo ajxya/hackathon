@@ -26,6 +26,7 @@ from app.schemas import AmbulanceRequest, AssistantRequest, CheckInRequest
 from app.scorecard import get_scorecard, note as note_scorecard
 from app.seed import seed, seed_if_empty
 from app.session_summary import build_session_summary
+from app import surge
 
 app = FastAPI(title="EDFlow")
 
@@ -188,14 +189,35 @@ def ambulance_incoming(payload: AmbulanceRequest = AmbulanceRequest()):
     return create_patient("ambulance", name=payload.name, acuity=payload.acuity, injury=payload.injury)
 
 
+@app.post("/surge/start")
+def surge_start():
+    """Start a surge on the server: fixes its total-arrivals budget for
+    this run and begins the ramp-up/peak/ramp-down profile. Returns
+    started=False (a no-op) if a surge is already running, so this can
+    never spin up a second generator."""
+    started = surge.start_surge()
+    return {"started": started, **surge.get_state()}
+
+
+@app.post("/surge/stop")
+def surge_stop():
+    """Cancel the current surge immediately — same effect as it running
+    out its duration/arrivals budget on its own."""
+    surge.stop_surge()
+    return surge.get_state()
+
+
 @app.post("/simulate/tick")
 def simulate_tick():
-    """One tick of a surge: several patients arrive at once, randomly split
-    between ambulance and walk-in. Called once per second for as long as
-    the dashboard's 'Run Surge' toggle is on — the user starts and stops
-    it manually, there's no fixed duration."""
-    created = run_arrival_tick()
-    return {"created": len(created), "patients": created}
+    """One tick of a running surge: however many patients the ramp profile
+    says arrive at once (see app/surge.py), randomly split between
+    ambulance and walk-in. Called once per second while the dashboard's
+    'Run Surge' toggle is on. If no surge is active, or this one has hit
+    its duration or arrivals cap, this creates nobody and reports the
+    surge as no longer active so the dashboard can stop polling."""
+    count = surge.tick_arrival_count()
+    created = run_arrival_tick(count) if count > 0 else []
+    return {"created": len(created), "patients": created, "surge_active": surge.is_active()}
 
 
 @app.post("/recommendations/apply/{rung}")

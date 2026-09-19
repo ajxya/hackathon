@@ -41,6 +41,11 @@ header p {
   opacity: 0.85;
 }
 
+.time-scale-note {
+  font-size: 0.8rem;
+  opacity: 0.7 !important;
+}
+
 /* Tab bar */
 .tab-bar {
   display: flex;
@@ -677,6 +682,13 @@ main {
   font-size: 0.8rem;
   color: var(--green);
   font-weight: 600;
+}
+
+.recommendation-projection {
+  font-size: 0.8rem;
+  color: var(--yellow);
+  font-weight: 600;
+  margin-bottom: 0.35rem;
 }
 
 .apply-button {

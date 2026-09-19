@@ -10,7 +10,7 @@ import random
 from datetime import datetime
 
 from app.allocation import advance_state
-from app.config import NURSE_MAX_PATIENTS, PHYSICIAN_MAX_PATIENTS
+from app.config import FLOAT_ROOM_BED_COUNT, NURSE_MAX_PATIENTS, PHYSICIAN_MAX_PATIENTS
 from app.reserve import decrement_float_pool, decrement_overflow_pool
 
 _SUFFIX_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -44,7 +44,7 @@ def apply_float_pool(conn, quantities):
         room_id = conn.execute(
             "INSERT INTO rooms (name, room_type) VALUES (?, 'Float')", (f"Float Room {_random_suffix()}",)
         ).lastrowid
-        for bed_letter in ("A", "B"):
+        for bed_letter in ("A", "B", "C", "D")[:FLOAT_ROOM_BED_COUNT]:
             conn.execute(
                 "INSERT INTO beds (room_id, label, status, created_at) VALUES (?, ?, 'available', ?)",
                 (room_id, f"Float Room {_random_suffix()} - Bed {bed_letter}", now),

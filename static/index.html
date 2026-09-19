@@ -11,6 +11,7 @@
   <header>
     <h1>EDFlow</h1>
     <p>Emergency Department Operations Dashboard</p>
+    <p class="time-scale-note">Simulated clock: 1 real second = 1 simulated minute</p>
   </header>
 
   <nav class="tab-bar">
@@ -258,6 +259,15 @@
           thresholds, not a machine-learning model.
         </p>
 
+        <h3>The simulated clock</h3>
+        <p class="how-it-works-text">
+          EDFlow runs on a compressed clock: 1 real second = 1 simulated
+          minute. Every wait time, length of stay, and target on this page
+          is stated in that simulated time — a "10 minute target" plays out
+          over 10 real seconds. This is also what makes a 30-second demo
+          surge represent a realistic half-hour of ED activity.
+        </p>
+
         <h3>Priority tiers and wait-time targets</h3>
         <p class="how-it-works-text">
           Every patient is assigned a priority tier on arrival. The waiting
@@ -279,20 +289,46 @@
 
         <h3>The escalation ladder</h3>
         <p class="how-it-works-text">
-          When a Tier 1–2 patient is past their target, EDFlow escalates
-          through four rungs, in order, only moving to the next one if the
-          current one can't fully restore targets:
+          When a Tier 1–2 patient is past their target — or one is
+          projected to be soon (see below) — EDFlow escalates through four
+          rungs, in order, only moving to the next one if the current one
+          can't fully restore targets:
         </p>
         <ol class="how-it-works-list">
-          <li><strong>The ED's own resources</strong> — if there's no breach yet, normal discharge turnover is trusted to keep up on its own.</li>
+          <li><strong>The ED's own resources</strong> — if there's no breach yet and none is imminent, normal discharge turnover is trusted to keep up on its own.</li>
           <li><strong>Hospital float pool</strong> — pull nurses, physicians, or rooms already available elsewhere in the hospital.</li>
           <li><strong>Overflow capacity</strong> — stand up extra physical beds within the ED.</li>
           <li><strong>Relocation</strong> — redirect lower-tier patients to a nearby facility.</li>
         </ol>
         <p class="how-it-works-text">
-          Every recommended quantity is capped at what's actually
+          Every recommended quantity is need-based: it's sized from
+          current load against realistic per-nurse, per-physician, and
+          per-room ratios, then capped at what's actually
           available — EDFlow will never recommend more nurses, rooms, or
           beds than the reserve it's drawing from actually has.
+        </p>
+
+        <h3>Proactive breach projection</h3>
+        <p class="how-it-works-text">
+          EDFlow doesn't only react after a Tier 1–2 patient has already
+          missed their target — it also watches how fast beds are filling
+          and projects when they'll run out entirely, which is the moment
+          the next Tier 1–2 arrival would breach (Tier 1's target is
+          immediate; Tier 2's is 10 minutes). When that projected breach is
+          close enough, the recommendation card shows it directly (for
+          example, "Tier 1-2 breach projected in ~6 min") and the ladder
+          starts recommending float pool or overflow capacity before the
+          breach actually happens, not after.
+        </p>
+
+        <h3>Left without being seen</h3>
+        <p class="how-it-works-text">
+          Lower-tier patients (Tiers 3–5) don't wait forever: if a patient's
+          wait passes twice their tier's target, they leave without being
+          seen. This is logged in the event log and counted on the
+          dashboard, and it's also what naturally caps how long a low-tier
+          wait can climb during a heavy surge — Tier 1–2 patients are never
+          eligible, since they're always served first.
         </p>
 
         <h3>Relocation rules</h3>

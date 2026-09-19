@@ -82,15 +82,43 @@ function renderRecommendations(recommendations) {
     reason.className = "recommendation-reason";
     reason.textContent = rec.reason;
 
+    // Rungs 2-4 always have a real action attached (an Apply/Approve
+    // button below) — "No action needed" is only correct for rung 0/1,
+    // which never show a button. A proactive rung 2/3 recommendation has
+    // no estimated_wait_reduction_minutes yet (nobody's actually waiting
+    // longer because of it — that's the point of acting early), so it
+    // needs its own phrasing rather than falling through to "No action
+    // needed," which would read as if there were nothing to do.
+    const hasAction = rec.rung === 2 || rec.rung === 3 || rec.rung === 4;
+    const isProactive = rec.projected_breach_minutes !== null && rec.projected_breach_minutes !== undefined;
     const savings = document.createElement("div");
     savings.className = "recommendation-savings";
-    savings.textContent =
-      rec.estimated_wait_reduction_minutes > 0
-        ? `Est. wait reduction: ~${rec.estimated_wait_reduction_minutes} min`
-        : "No action needed";
+    if (rec.estimated_wait_reduction_minutes > 0) {
+      savings.textContent = `Est. wait reduction: ~${rec.estimated_wait_reduction_minutes} min`;
+    } else if (hasAction && isProactive) {
+      savings.textContent = "Apply now to help prevent the projected breach";
+    } else if (hasAction) {
+      savings.textContent = "Apply to act on this recommendation";
+    } else {
+      savings.textContent = "No action needed";
+    }
 
     item.appendChild(action);
     item.appendChild(reason);
+
+    // Proactive recommendations (no Tier 1-2 breach yet, but one is
+    // projected from the current bed-fill rate) surface that projection
+    // as its own line, separate from the reason text.
+    if (rec.projected_breach_minutes !== null && rec.projected_breach_minutes !== undefined) {
+      const projection = document.createElement("div");
+      projection.className = "recommendation-projection";
+      projection.textContent =
+        rec.projected_breach_minutes <= 0.5
+          ? "⏱ Tier 1-2 breach projected imminently"
+          : `⏱ Tier 1-2 breach projected in ~${rec.projected_breach_minutes} min`;
+      item.appendChild(projection);
+    }
+
     item.appendChild(savings);
 
     // Rungs 2 and 3 apply directly; rung 4 (relocation) has its own
@@ -1215,6 +1243,21 @@ function render(data) {
   updateNearbyHospitalsPanel();
 }
 
+// True once /state has ever loaded successfully — a later transient
+// failure (e.g. a dropped connection) shouldn't blank out or replace
+// already-rendered data, only the very first load should show the
+// "waking up" message instead of stale placeholder text.
+let hasLoadedOnce = false;
+
+function showWakingUpNotice() {
+  if (hasLoadedOnce) return; // don't stomp on real data with a loading message
+  setText("status-level", "Waking up the server…");
+  setText(
+    "status-reason",
+    "The backend can take up to a minute to respond on its first request — retrying automatically."
+  );
+}
+
 async function fetchState(force = false) {
   // Skip this tick if a previous fetch is still in flight (e.g. a slow
   // network), so requests don't pile up on top of each other. `force`
@@ -1225,8 +1268,17 @@ async function fetchState(force = false) {
   fetchInProgress = true;
   try {
     const res = await fetch("/state");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    hasLoadedOnce = true;
     render(data);
+  } catch (e) {
+    // The background poll (setInterval below) already retries every
+    // POLL_INTERVAL_MS without any special handling here — this only
+    // needs to make the FIRST load's wait legible instead of leaving the
+    // static "LOADING…" placeholder up with no explanation.
+    console.error("Failed to fetch /state", e);
+    showWakingUpNotice();
   } finally {
     fetchInProgress = false;
   }
@@ -1246,10 +1298,29 @@ async function postAndRefresh(endpoint, force = false) {
 // the race where a tick's patient gets inserted right after a reset.
 let currentTickPromise = null;
 
+// The surge's length and arrivals cap now live on the server (app/surge.py)
+// — this flag just tracks whether the CLIENT thinks a surge is running, so
+// a Stop click that lands while startSurge() is still awaiting its first
+// tick still cancels it cleanly instead of racing the interval into being
+// set up anyway.
+let surgeRunning = false;
+
 async function runSurgeTick() {
   currentTickPromise = (async () => {
     try {
-      await postAndRefresh("/simulate/tick");
+      const res = await fetch("/simulate/tick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await res.json();
+      await fetchState();
+      // The server ends the surge on its own once it hits its duration or
+      // arrivals cap — when that happens, stop polling and restore the
+      // button without waiting for the user to click Stop.
+      if (surgeRunning && !data.surge_active) {
+        stopSurge();
+      }
     } catch (e) {
       console.error("Surge tick failed", e);
     }
@@ -1257,23 +1328,30 @@ async function runSurgeTick() {
   await currentTickPromise;
 }
 
-function startSurge() {
-  if (surgeInterval) return; // already running
+async function startSurge() {
+  if (surgeRunning) return; // already running (or starting up)
+  surgeRunning = true;
 
   const button = document.getElementById("btn-surge");
   button.textContent = "⏹ Stop Surge";
   button.classList.add("surge-active");
 
-  runSurgeTick(); // first tick immediately, don't wait a full second
+  try {
+    // Fixes this surge's total-arrivals budget on the server; a no-op if
+    // one is somehow already active there, so this can never spin up a
+    // second generator.
+    await fetch("/surge/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    await runSurgeTick(); // first tick immediately, don't wait a full second
+  } catch (e) {
+    console.error("Surge start failed", e);
+  }
+
+  if (!surgeRunning) return; // stopped while starting up — don't begin polling after all
   surgeInterval = setInterval(runSurgeTick, 1000);
 }
 
 function stopSurge() {
-  // The only "background timer" in this whole app is this browser-side
-  // interval — the backend has no persistent timers of its own, it just
-  // computes discharges/placements lazily whenever a request comes in.
-  // So cancelling a surge is entirely a client-side concern: clear the
-  // interval so no further ticks fire, and restore the button.
+  surgeRunning = false;
   if (surgeInterval) {
     clearInterval(surgeInterval);
     surgeInterval = null;
@@ -1281,12 +1359,17 @@ function stopSurge() {
   const button = document.getElementById("btn-surge");
   button.classList.remove("surge-active");
   button.textContent = "🚨 Run Surge";
+  // Cancels the generator server-side immediately, same as it running out
+  // its duration/arrivals budget on its own.
+  fetch("/surge/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch((e) =>
+    console.error("Surge stop failed", e)
+  );
 }
 
 // The surge is a manual toggle, not a timed run: click to start it, click
 // again whenever you want to stop it, as many times as you like.
 document.getElementById("btn-surge").addEventListener("click", () => {
-  if (surgeInterval) {
+  if (surgeRunning) {
     stopSurge();
   } else {
     startSurge();
@@ -1498,3 +1581,9 @@ fetchState();
 fetchHospitals();
 setInterval(fetchState, POLL_INTERVAL_MS);
 setInterval(fetchHospitals, POLL_INTERVAL_MS);
+
+// A cold Render instance doesn't error — the very first fetch() just sits
+// pending for up to a minute. That case never reaches fetchState()'s own
+// catch block, so upgrade the message on a timer instead, once "LOADING…"
+// has been up long enough that it's clearly not a normal fast response.
+setTimeout(showWakingUpNotice, 2500);

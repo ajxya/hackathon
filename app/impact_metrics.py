@@ -4,10 +4,10 @@ shadow baseline simulation (app/baseline_simulation.py; the exact same
 arrivals, but never any float pool, overflow, or relocation help).
 
 Every definition here matches the scorecard and breach summary exactly —
-same TIER_TARGET_MINUTES, same SIM_MINUTES_PER_REAL_SECOND, same flat
-per-waiting-patient avg-wait formula as app/logic.py's get_utilization()
-— so these numbers reconcile with the rest of the dashboard rather than
-being a second, disagreeing set of math.
+same TIER_TARGET_MINUTES, same SIM_MINUTES_PER_REAL_SECOND, same
+actual-elapsed-time avg-wait definition as app/logic.py's
+get_utilization() — so these numbers reconcile with the rest of the
+dashboard rather than being a second, disagreeing set of math.
 
 This is a simulated comparison: the baseline is a parallel copy of this
 same synthetic ED, not a real historical control group.
@@ -19,8 +19,6 @@ from app import baseline_simulation
 from app.config import SIM_MINUTES_PER_REAL_SECOND, TIER_TARGET_MINUTES
 from app.event_log import get_events
 from app.scorecard import get_scorecard
-
-AVG_WAIT_MINUTES_PER_WAITING_PATIENT = 5.0  # matches app/logic.py's get_utilization
 
 BASELINE_DEFINITION = (
     "The baseline is a simulated parallel run of this same ED — identical arrivals, "
@@ -49,6 +47,7 @@ def compute_metrics(patients, now, peak_avg_wait_minutes):
     ever happens on the real side, and its outcome depends on a different
     facility's performance, not this ED's own capacity."""
     waiting_count = 0
+    waiting_minutes_sum = 0.0
     total_patient_minutes = 0.0
     tier12_breach_minutes = 0.0
     lwbs_count = 0
@@ -58,21 +57,24 @@ def compute_metrics(patients, now, peak_avg_wait_minutes):
         if end_time is None:
             continue
 
-        if patient["status"] == "waiting":
-            waiting_count += 1
-        elif patient["status"] == "left_lwbs":
-            lwbs_count += 1
-
         elapsed_seconds = max((end_time - patient["arrival_time"]).total_seconds(), 0)
         wait_minutes = elapsed_seconds * SIM_MINUTES_PER_REAL_SECOND
         total_patient_minutes += wait_minutes
+
+        if patient["status"] == "waiting":
+            waiting_count += 1
+            waiting_minutes_sum += wait_minutes
+        elif patient["status"] == "left_lwbs":
+            lwbs_count += 1
 
         if patient["acuity"] in (1, 2):
             target = TIER_TARGET_MINUTES.get(patient["acuity"], 0)
             tier12_breach_minutes += max(0.0, wait_minutes - target)
 
+    avg_wait_minutes = round(waiting_minutes_sum / waiting_count, 1) if waiting_count else 0.0
+
     return {
-        "avg_wait_minutes": round(waiting_count * AVG_WAIT_MINUTES_PER_WAITING_PATIENT, 1),
+        "avg_wait_minutes": avg_wait_minutes,
         "peak_avg_wait_minutes": round(peak_avg_wait_minutes, 1),
         "tier12_breach_minutes": round(tier12_breach_minutes, 1),
         "total_patient_minutes_waited": round(total_patient_minutes, 1),

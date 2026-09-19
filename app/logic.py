@@ -5,11 +5,17 @@ The thresholds and formulas below are simple, tunable rules of thumb for
 this demo, not real clinical or hospital-operations standards.
 """
 
+import math
 from datetime import datetime
 
+from app import forecast
 from app.config import (
+    FLOAT_ROOM_BED_COUNT,
+    NURSE_MAX_PATIENTS,
     NURSE_TRIAGE_WEIGHT,
+    PHYSICIAN_MAX_PATIENTS,
     PHYSICIAN_TRIAGE_WEIGHT,
+    PROACTIVE_BREACH_WINDOW_MINUTES,
     SIM_MINUTES_PER_REAL_SECOND,
     TIER_TARGET_MINUTES,
 )
@@ -23,6 +29,15 @@ def _pct(used, total):
     if not total:
         return 0.0
     return round(used / total * 100, 1)
+
+
+def _wait_minutes(arrival_time, now):
+    """A patient's actual elapsed wait, in simulated minutes, from their
+    real arrival timestamp to `now` — the one wait definition shared by
+    the scorecard, breach summary, tier table, and patient list, so they
+    always reconcile."""
+    elapsed_seconds = (now - datetime.fromisoformat(arrival_time)).total_seconds()
+    return round(max(elapsed_seconds, 0) * SIM_MINUTES_PER_REAL_SECOND, 1)
 
 
 def get_utilization(conn):
@@ -47,7 +62,7 @@ def get_utilization(conn):
     ).fetchone()["n"]
 
     waiting_rows = conn.execute(
-        "SELECT id FROM patients WHERE status = 'waiting' ORDER BY acuity ASC, arrival_time ASC"
+        "SELECT id, arrival_time FROM patients WHERE status = 'waiting' ORDER BY acuity ASC, arrival_time ASC"
     ).fetchall()
     patients_waiting = len(waiting_rows)
 
@@ -76,14 +91,19 @@ def get_utilization(conn):
     physician_capacity_used = min(round(physician_workload_units), physician_capacity_total)
     physician_pct = min(_pct(physician_workload_units, physician_capacity_total), 100.0)
 
-    # Displayed average wait: a flat 5 minutes per patient in the waiting
-    # queue. This is deliberately simple rather than a realistic queue/
-    # service-rate projection — a "real" projection stays close to zero
-    # whenever beds are turning over quickly, which hid the demo's own
-    # escalation ladder and Impact tab behind numbers too small to notice.
-    # A flat per-patient number climbs predictably as the queue grows, so
-    # the recommendations and trend charts have something to visibly react to.
-    avg_wait_minutes = round(patients_waiting * 5.0, 1)
+    # Displayed average wait: the mean of each currently-waiting patient's
+    # own actual elapsed wait on the simulated clock — the same per-patient
+    # figure get_breach_summary() and get_patients_list() already compute,
+    # so the scorecard, tier table, charts, and situation report all agree
+    # with each other instead of showing two different definitions of
+    # "wait."
+    now = datetime.now()
+    if patients_waiting:
+        avg_wait_minutes = round(
+            sum(_wait_minutes(row["arrival_time"], now) for row in waiting_rows) / patients_waiting, 1
+        )
+    else:
+        avg_wait_minutes = 0.0
 
     return {
         "beds": {
@@ -128,8 +148,7 @@ def get_breach_summary(conn):
 
     for row in rows:
         tier = row["acuity"]
-        elapsed_seconds = (now - datetime.fromisoformat(row["arrival_time"])).total_seconds()
-        wait_minutes = round(max(elapsed_seconds, 0) * SIM_MINUTES_PER_REAL_SECOND, 1)
+        wait_minutes = _wait_minutes(row["arrival_time"], now)
         target_minutes = TIER_TARGET_MINUTES.get(tier, 0)
 
         by_tier[tier]["waiting"] += 1
@@ -218,6 +237,25 @@ def get_status(utilization, breach_summary):
     return {"level": "green", "reason": "Operating normally. No breaches, and beds, staff, and rooms all have headroom."}
 
 
+def _breach_projection_phrase(projected_breach_minutes):
+    """'in ~6 min' or, once beds are already at zero, 'imminently' — ~0 min
+    reads oddly since it's not really a future event anymore."""
+    if projected_breach_minutes <= 0.5:
+        return "imminently"
+    return f"in ~{projected_breach_minutes:g} min"
+
+
+def _units_needed(pct, capacity_total, per_unit_capacity, target_pct=YELLOW_THRESHOLD):
+    """How many more `per_unit_capacity`-sized units (one nurse, one
+    physician) would bring utilization back down to target_pct — 0 if
+    already at or under target. A simple ratio-based sizing, not a real
+    staffing model."""
+    if capacity_total <= 0 or pct <= target_pct or per_unit_capacity <= 0:
+        return 0
+    deficit_workload = (pct - target_pct) / 100 * capacity_total
+    return math.ceil(deficit_workload / per_unit_capacity)
+
+
 def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
     """Recommend the next capped allocation action, as an escalation ladder:
 
@@ -226,10 +264,22 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
         3. Overflow capacity (extra physical beds within the ED)
         4. Relocation to nearby facilities
 
-    Each rung is only evaluated if the previous one can't fully cover the
-    need, and every quantity is capped at what's actually available — never
+    Quantities are need-based: sized from current load against realistic
+    per-nurse/per-physician/per-room ratios (see _units_needed above and
+    FLOAT_ROOM_BED_COUNT), then capped at what's actually available — never
     a number bigger than the reserve it's drawn from. This is a rules-based
     heuristic for a demo, not a real staffing or capacity-planning model.
+
+    Escalation is also PROACTIVE: app/forecast.py projects how many minutes
+    remain before beds run out (from how fast they've been filling), and
+    this ladder starts recommending once that projected breach is within
+    PROACTIVE_BREACH_WINDOW_MINUTES — not only after Tier 1-2 patients have
+    actually started missing their target wait. Before this fix, escalation
+    was gated entirely on tier12_breaches > 0, but tier-priority placement
+    means Tier 1-2 patients are almost always seated first and rarely
+    breach even while every other resource is completely saturated — so the
+    ladder would sit on "Monitor" through an entire surge no matter how
+    many Tier 3-5 patients piled up waiting.
     """
     beds = utilization["beds"]
     rooms = utilization["rooms"]
@@ -239,10 +289,19 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
     avg_wait = utilization["avg_wait_minutes"]
     tier12_breaches = breach_summary["tier1_2_breaches"]
 
+    forecast.note(beds["available"])
+    projected_breach_minutes = None
+    if tier12_breaches == 0:
+        projected_breach_minutes = forecast.estimate_minutes_to_breach(beds["available"])
+
+    breach_imminent = tier12_breaches > 0 or (
+        projected_breach_minutes is not None and projected_breach_minutes <= PROACTIVE_BREACH_WINDOW_MINUTES
+    )
+
     no_strain = beds["pct"] < YELLOW_THRESHOLD and nurses["pct"] < YELLOW_THRESHOLD and physicians["pct"] < YELLOW_THRESHOLD
 
     # Rung 0: genuinely nothing to do.
-    if tier12_breaches == 0 and no_strain:
+    if not breach_imminent and no_strain:
         return [
             {
                 "rung": 0,
@@ -250,13 +309,14 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
                 "reason": "All resources have headroom and no Tier 1-2 patients are past target.",
                 "estimated_wait_reduction_minutes": 0,
                 "quantities": {},
+                "projected_breach_minutes": None,
             }
         ]
 
-    # Rung 1: the ED's own resources/turnover. If there's strain but no
-    # Tier 1-2 breach yet, normal discharge throughput should keep pace —
-    # no need to reach outside the ED.
-    if tier12_breaches == 0:
+    # Rung 1: the ED's own resources/turnover. Strain, but no breach has
+    # happened and none is imminent — normal discharge throughput should
+    # keep pace without reaching outside the ED.
+    if not breach_imminent:
         return [
             {
                 "rung": 1,
@@ -268,32 +328,49 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
                 ),
                 "estimated_wait_reduction_minutes": 0,
                 "quantities": {},
+                "projected_breach_minutes": None,
             }
         ]
 
-    # A Tier 1-2 breach exists, which means the ED's own resources (rung 1)
-    # have already fallen behind — escalate, capping every quantity at
-    # what's actually available.
-    units_needed = max(tier12_breaches, 1)
+    proactive = tier12_breaches == 0  # imminent by projection, not an actual breach yet
     ladder = []
 
-    # Rung 2: hospital float pool (nurses, physicians, rooms).
+    # Rung 2: hospital float pool (nurses, physicians, rooms), sized from
+    # actual current load against realistic per-unit ratios. While
+    # proactively triggered (a breach is projected but hasn't happened),
+    # anything trending past the yellow threshold gets at least 1 unit
+    # recommended even if the ratio-based deficit still rounds to 0 — the
+    # point is to act before the breach, not size to an already-overdue one.
     nurses_needed_flag = nurses["pct"] >= YELLOW_THRESHOLD
     physicians_needed_flag = physicians["pct"] >= YELLOW_THRESHOLD
     rooms_needed_flag = bool(rooms["total"]) and rooms["in_use"] >= rooms["total"]
 
-    nurses_pulled = min(units_needed, float_pool["nurses_available"]) if nurses_needed_flag else 0
-    physicians_pulled = min(units_needed, float_pool["physicians_available"]) if physicians_needed_flag else 0
-    rooms_pulled = min(units_needed, float_pool["rooms_available"]) if rooms_needed_flag else 0
+    bed_shortfall = max(0, waiting - beds["available"])
+
+    nurses_needed = _units_needed(nurses["pct"], nurses["capacity_total"], NURSE_MAX_PATIENTS)
+    physicians_needed = _units_needed(physicians["pct"], physicians["capacity_total"], PHYSICIAN_MAX_PATIENTS)
+    rooms_needed = math.ceil(bed_shortfall / FLOAT_ROOM_BED_COUNT) if rooms_needed_flag else 0
+
+    if proactive:
+        if nurses_needed_flag:
+            nurses_needed = max(nurses_needed, 1)
+        if physicians_needed_flag:
+            physicians_needed = max(physicians_needed, 1)
+        if rooms_needed_flag:
+            rooms_needed = max(rooms_needed, 1)
+
+    nurses_pulled = min(nurses_needed, float_pool["nurses_available"]) if nurses_needed_flag else 0
+    physicians_pulled = min(physicians_needed, float_pool["physicians_available"]) if physicians_needed_flag else 0
+    rooms_pulled = min(rooms_needed, float_pool["rooms_available"]) if rooms_needed_flag else 0
 
     rung2_applicable = nurses_needed_flag or physicians_needed_flag or rooms_needed_flag
     rung2_fully_covered = True
 
     if rung2_applicable:
         rung2_fully_covered = (
-            (not nurses_needed_flag or nurses_pulled >= units_needed)
-            and (not physicians_needed_flag or physicians_pulled >= units_needed)
-            and (not rooms_needed_flag or rooms_pulled >= units_needed)
+            (not nurses_needed_flag or nurses_pulled >= nurses_needed)
+            and (not physicians_needed_flag or physicians_pulled >= physicians_needed)
+            and (not rooms_needed_flag or rooms_pulled >= rooms_needed)
         )
 
         parts = []
@@ -304,17 +381,24 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
         if rooms_pulled:
             parts.append(f"{rooms_pulled} room{'s' if rooms_pulled != 1 else ''}")
 
-        reason = (
-            f"{tier12_breaches} Tier 1-2 patient{'s' if tier12_breaches != 1 else ''} past target; "
-            f"ED capacity is strained (beds {beds['pct']}%, nurses {nurses['pct']}%, "
-            f"physicians {physicians['pct']}%)."
-        )
+        if proactive:
+            reason = (
+                f"Projected Tier 1-2 breach {_breach_projection_phrase(projected_breach_minutes)} at the current "
+                f"bed-fill rate; capacity is already strained (beds {beds['pct']}%, nurses {nurses['pct']}%, "
+                f"physicians {physicians['pct']}%)."
+            )
+        else:
+            reason = (
+                f"{tier12_breaches} Tier 1-2 patient{'s' if tier12_breaches != 1 else ''} past target; "
+                f"ED capacity is strained (beds {beds['pct']}%, nurses {nurses['pct']}%, "
+                f"physicians {physicians['pct']}%)."
+            )
         shortfalls = []
-        if nurses_needed_flag and nurses_pulled < units_needed:
+        if nurses_needed_flag and nurses_pulled < nurses_needed:
             shortfalls.append(f"only {float_pool['nurses_available']} nurse(s) left in the float pool")
-        if physicians_needed_flag and physicians_pulled < units_needed:
+        if physicians_needed_flag and physicians_pulled < physicians_needed:
             shortfalls.append(f"only {float_pool['physicians_available']} physician(s) left")
-        if rooms_needed_flag and rooms_pulled < units_needed:
+        if rooms_needed_flag and rooms_pulled < rooms_needed:
             shortfalls.append(f"only {float_pool['rooms_available']} room(s) left")
         if shortfalls:
             reason += " Float pool is limited: " + "; ".join(shortfalls) + "."
@@ -332,23 +416,27 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
                 "reason": reason,
                 "estimated_wait_reduction_minutes": round(
                     min(avg_wait, nurses_pulled * 6 + physicians_pulled * 7 + rooms_pulled * 10), 1
-                ),
+                )
+                if not proactive
+                else 0,
                 "quantities": {"nurses": nurses_pulled, "physicians": physicians_pulled, "rooms": rooms_pulled},
+                "projected_breach_minutes": projected_breach_minutes if proactive else None,
             }
         )
 
-    # Rung 3: overflow capacity (extra physical beds within the ED).
-    beds_needed_flag = waiting > beds["available"]
-    beds_opened = min(units_needed, overflow_pool["overflow_beds_available"]) if beds_needed_flag else 0
-    rung3_fully_covered = (not beds_needed_flag) or beds_opened >= units_needed
+    # Rung 3: overflow capacity (extra physical beds within the ED), sized
+    # directly from the current bed shortfall.
+    beds_needed_flag = bed_shortfall > 0
+    beds_opened = min(bed_shortfall, overflow_pool["overflow_beds_available"]) if beds_needed_flag else 0
+    rung3_fully_covered = (not beds_needed_flag) or beds_opened >= bed_shortfall
 
     if beds_needed_flag:
         reason = (
             f"{waiting} patient{'s' if waiting != 1 else ''} waiting with only "
             f"{beds['available']} bed{'s' if beds['available'] != 1 else ''} open "
-            f"({units_needed} more needed to clear the Tier 1-2 breach)."
+            f"({bed_shortfall} more bed{'s' if bed_shortfall != 1 else ''} needed to clear the backlog)."
         )
-        if beds_opened < units_needed:
+        if beds_opened < bed_shortfall:
             reason += (
                 f" Only {overflow_pool['overflow_beds_available']} overflow "
                 f"bed{'s' if overflow_pool['overflow_beds_available'] != 1 else ''} available."
@@ -363,17 +451,58 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
                     else "No overflow beds available"
                 ),
                 "reason": reason,
-                "estimated_wait_reduction_minutes": round(min(avg_wait, beds_opened * 8), 1),
+                "estimated_wait_reduction_minutes": round(min(avg_wait, beds_opened * 8), 1) if not proactive else 0,
                 "quantities": {"beds": beds_opened},
+                "projected_breach_minutes": projected_breach_minutes if proactive else None,
             }
         )
 
+    if not ladder:
+        # Neither the float pool nor overflow beds are actually applicable
+        # (nurses, physicians, rooms, and beds all still have headroom) —
+        # surface why rather than silently returning nothing. This can
+        # happen either proactively (a breach is projected from the bed-
+        # fill rate but hasn't happened) or reactively (an actual Tier 1-2
+        # breach exists — Tier 1's target is 0 minutes, so even a brief
+        # wait counts — while every resource is still otherwise fine and
+        # should resolve on its own).
+        if proactive:
+            reason = (
+                f"Projected Tier 1-2 breach {_breach_projection_phrase(projected_breach_minutes)} at the "
+                f"current bed-fill rate (beds {beds['pct']}%). Nothing to pull from the float pool or "
+                f"overflow yet, but keep watching."
+            )
+        else:
+            reason = (
+                f"{tier12_breaches} Tier 1-2 patient{'s are' if tier12_breaches != 1 else ' is'} past target, "
+                f"but beds, nurses, physicians, and rooms all still have headroom (beds {beds['pct']}%, nurses "
+                f"{nurses['pct']}%, physicians {physicians['pct']}%) — this should resolve on its own as the "
+                f"ED's own turnover catches up."
+            )
+        return [
+            {
+                "rung": 1,
+                "action": "Monitor — bed occupancy is trending up" if proactive else "Monitor — ED's own turnover should keep pace",
+                "reason": reason,
+                "estimated_wait_reduction_minutes": 0,
+                "quantities": {},
+                "projected_breach_minutes": projected_breach_minutes if proactive else None,
+            }
+        ]
+
     if rung2_fully_covered and rung3_fully_covered:
+        return ladder
+
+    if proactive:
+        # Don't recommend relocating patients over a projection that
+        # hasn't happened yet — rung 4 is reserved for an actual, current
+        # Tier 1-2 breach that the float pool and overflow couldn't cover.
         return ladder
 
     # Rung 4: relocate lower-tier patients to nearby facilities. Never
     # Tier 1 — the relocation engine itself enforces that; this is just the
     # recommendation surface for it.
+    units_needed = max(tier12_breaches, 1)
     ladder.append(
         {
             "rung": 4,
@@ -385,6 +514,7 @@ def get_recommendations(utilization, breach_summary, float_pool, overflow_pool):
             ),
             "estimated_wait_reduction_minutes": round(min(avg_wait, units_needed * 5), 1),
             "quantities": {},
+            "projected_breach_minutes": None,
         }
     )
     return ladder
@@ -413,16 +543,14 @@ def get_patients_list(conn):
 
     patients = []
     for row in rows:
-        arrival_dt = datetime.fromisoformat(row["arrival_time"])
         if row["status"] == "waiting":
-            elapsed_seconds = (now - arrival_dt).total_seconds()
+            reference_time = now
         elif row["bed_assigned_at"]:
-            placed_dt = datetime.fromisoformat(row["bed_assigned_at"])
-            elapsed_seconds = (placed_dt - arrival_dt).total_seconds()
+            reference_time = datetime.fromisoformat(row["bed_assigned_at"])
         else:
-            elapsed_seconds = 0
+            reference_time = datetime.fromisoformat(row["arrival_time"])
 
-        wait_minutes = round(max(elapsed_seconds, 0) * SIM_MINUTES_PER_REAL_SECOND, 1)
+        wait_minutes = _wait_minutes(row["arrival_time"], reference_time)
         target_minutes = TIER_TARGET_MINUTES.get(row["acuity"], 0)
 
         patients.append(
