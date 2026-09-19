@@ -154,7 +154,15 @@ def _call_llm(messages):
             body = json.loads(response.read().decode("utf-8"))
         reply = body["choices"][0]["message"]["content"].strip()
         return (reply, None) if reply else (None, "call_failed")
-    except (URLError, HTTPError, TimeoutError, KeyError, IndexError, ValueError):
+    except HTTPError as e:
+        # The response body here is the provider's own error message (e.g.
+        # invalid key, no quota, unknown model) and never contains the key
+        # itself — safe to log for diagnosing a misconfigured deployment.
+        detail = e.read().decode("utf-8", errors="replace")[:500]
+        print(f"[assistant] LLM call failed: HTTP {e.code} — {detail}")
+        return None, "call_failed"
+    except (URLError, TimeoutError, KeyError, IndexError, ValueError) as e:
+        print(f"[assistant] LLM call failed: {type(e).__name__}: {e}")
         return None, "call_failed"
 
 
