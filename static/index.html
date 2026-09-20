@@ -8,116 +8,199 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <h1>EDFlow</h1>
-    <p>Emergency Department Operations Dashboard</p>
-    <p class="time-scale-note">Simulated clock: 1 real second = 1 simulated minute</p>
-  </header>
+  <div id="app-skeleton" class="app-skeleton" role="status" aria-live="polite">
+    <div class="skeleton-sidebar">
+      <div class="skeleton-block skeleton-wordmark"></div>
+      <div class="skeleton-block skeleton-nav-item"></div>
+      <div class="skeleton-block skeleton-nav-item"></div>
+      <div class="skeleton-block skeleton-nav-item"></div>
+      <div class="skeleton-block skeleton-nav-item"></div>
+      <div class="skeleton-block skeleton-nav-item"></div>
+    </div>
+    <div class="skeleton-main">
+      <div class="skeleton-block skeleton-topbar"></div>
+      <div class="skeleton-body">
+        <div class="skeleton-block skeleton-panel"></div>
+        <div class="skeleton-block skeleton-panel skeleton-panel-tall"></div>
+        <div class="skeleton-block skeleton-panel"></div>
+      </div>
+      <p id="app-skeleton-message" class="skeleton-message">Loading…</p>
+    </div>
+  </div>
 
-  <nav class="tab-bar">
-    <button class="tab-button active" data-tab="live-ops">Live Ops</button>
-    <button class="tab-button" data-tab="patients">Patients</button>
-    <button class="tab-button" data-tab="network">Hospital Network</button>
-    <button class="tab-button" data-tab="impact">Impact</button>
-    <button class="tab-button" data-tab="how-it-works">How It Works</button>
-  </nav>
+  <div id="narrow-screen-banner" class="narrow-screen-banner">
+    <span>EDFlow is designed for desktop.</span>
+    <button type="button" id="dismiss-narrow-banner">Dismiss</button>
+  </div>
 
-  <main>
-    <section class="tab-content" data-tab-content="live-ops">
-      <div id="headline-metric" class="headline-metric headline-ok">
-        <div class="headline-number" id="headline-breach-count">–</div>
-        <div class="headline-label">Tier 1–2 patients past target wait</div>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <span class="sidebar-wordmark">EDFlow</span>
+        <button id="sidebar-collapse-toggle" class="sidebar-collapse-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5.5 8l4.5 5"/></svg>
+        </button>
       </div>
 
-      <div id="status-banner" class="status-banner status-green">
-        <span class="status-dot"></span>
-        <div>
-          <strong id="status-level">LOADING…</strong>
-          <p id="status-reason">Fetching current state…</p>
+      <nav class="sidebar-nav">
+        <button class="tab-button active" data-tab="live-ops" data-view-title="Live Ops" title="Live Ops">
+          <svg class="nav-icon" viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8.5h2.6l1.6-4.4 2.6 8.8 1.6-4.4h4.6"/></svg>
+          <span class="nav-label">Live Ops</span>
+        </button>
+        <button class="tab-button" data-tab="patients" data-view-title="Patients" title="Patients">
+          <svg class="nav-icon" viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.3" r="2.1"/><path d="M1.6 13.8c.3-2.5 2.1-4.3 4.4-4.3s4.1 1.8 4.4 4.3"/><circle cx="12.3" cy="6" r="1.6"/><path d="M11 9.7c1.7.2 3 1.6 3.3 3.6"/></svg>
+          <span class="nav-label">Patients</span>
+        </button>
+        <button class="tab-button" data-tab="network" data-view-title="Hospital Network" title="Hospital Network">
+          <svg class="nav-icon" viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="4" r="1.7"/><circle cx="13" cy="4.5" r="1.7"/><circle cx="8" cy="13" r="1.7"/><path d="M5.3 5 7 11.4M11.7 5.6 9 11.6M5.6 4.2h5.6"/></svg>
+          <span class="nav-label">Hospital Network</span>
+        </button>
+        <button class="tab-button" data-tab="impact" data-view-title="Impact" title="Impact">
+          <svg class="nav-icon" viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 14V8.5M7 14V3M12 14v-5"/><path d="M1.5 14.5h13"/></svg>
+          <span class="nav-label">Impact</span>
+        </button>
+        <button class="tab-button" data-tab="how-it-works" data-view-title="How It Works" title="How It Works">
+          <svg class="nav-icon" viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.4v4.1"/><circle cx="8" cy="5.1" r="0.15" fill="currentColor" stroke="currentColor"/></svg>
+          <span class="nav-label">How It Works</span>
+        </button>
+      </nav>
+    </aside>
+
+    <div class="app-body">
+      <header class="topbar">
+        <h1 class="topbar-title" id="topbar-title">Live Ops</h1>
+        <span class="topbar-clock time-scale-note">Simulated clock: 1 real second = 1 simulated minute</span>
+        <span class="topbar-shortcuts-hint" title="Keyboard shortcuts: 1-5 switch views, S starts or stops a surge">
+          Shortcuts: 1&ndash;5 views &middot; S surge
+        </span>
+        <div class="topbar-actions">
+          <button id="btn-surge" class="btn btn-primary" title="Start or stop a surge (shortcut: S)">Run Surge</button>
+          <button id="btn-reset" class="btn btn-destructive" title="Reset the demo (asks for confirmation first)">Reset Demo</button>
+        </div>
+        <span class="simulated-badge topbar-badge">Simulated data</span>
+      </header>
+
+      <main class="app-content">
+        <section class="tab-content live-ops-view" data-tab-content="live-ops">
+      <div class="status-strip">
+        <div id="headline-metric" class="headline-metric headline-ok">
+          <div class="headline-number" id="headline-breach-count">–</div>
+          <div class="headline-label">Tier 1–2 patients past target wait</div>
+        </div>
+
+        <div id="status-banner" class="status-banner status-green">
+          <span class="status-dot"></span>
+          <div class="status-banner-body">
+            <div class="status-banner-heading">
+              <span class="status-icon" id="status-icon"></span>
+              <strong id="status-level">LOADING…</strong>
+            </div>
+            <p id="status-reason">Fetching current state…</p>
+          </div>
         </div>
       </div>
 
-      <!-- Fixed right after the status banner, before any panel whose
-           presence toggles on/off (relocation banner, nearby hospitals) —
-           so these buttons never shift position as the page's content
-           above them grows or shrinks. -->
-      <div class="actions">
-        <button id="btn-surge">🚨 Run Surge</button>
-        <button id="btn-reset" class="secondary">🔄 Reset Demo</button>
-        <span id="last-updated" class="last-updated"></span>
-      </div>
-
       <div id="relocation-banner" class="relocation-banner hidden">
-        🔀 Relocating patients to: <span id="relocation-destinations"></span>
+        Relocating patients to: <span id="relocation-destinations"></span>
       </div>
 
-      <section id="nearby-hospitals-panel" class="nearby-hospitals-panel hidden">
-        <h2>Nearby Hospitals <span class="simulated-badge">Simulated</span></h2>
-        <div id="nearby-hospitals-list"></div>
-      </section>
+      <div class="console-grid">
+        <div class="console-column console-column-left">
+          <section class="console-panel">
+            <div class="console-panel-titlebar">Resources</div>
+            <div class="console-panel-body">
+              <div class="meter-row" title="Beds occupied out of total beds available">
+                <span class="meter-label">Beds</span>
+                <div class="bar"><div class="bar-fill" id="beds-bar"></div></div>
+                <span class="meter-fraction mono-num"><span id="beds-occupied">–</span>/<span id="beds-total">–</span></span>
+                <span class="meter-pct mono-num" id="beds-pct">–</span>
+              </div>
+              <div class="meter-row" title="Rooms in use (occupied or being cleaned) out of total rooms">
+                <span class="meter-label">Rooms</span>
+                <div class="bar"><div class="bar-fill" id="rooms-bar"></div></div>
+                <span class="meter-fraction mono-num"><span id="rooms-in-use">–</span>/<span id="rooms-total">–</span></span>
+                <span class="meter-pct mono-num" id="rooms-pct">–</span>
+              </div>
+              <div class="meter-row" title="Nurse patient-slots filled out of total slots (includes waiting-room triage load)">
+                <span class="meter-label">Nurses</span>
+                <div class="bar"><div class="bar-fill" id="nurses-bar"></div></div>
+                <span class="meter-fraction mono-num"><span id="nurses-used">–</span>/<span id="nurses-total">–</span></span>
+                <span class="meter-pct mono-num" id="nurses-pct">–</span>
+              </div>
+              <div class="meter-row" title="Physician patient-slots filled out of total slots (includes waiting-room triage load)">
+                <span class="meter-label">Physicians</span>
+                <div class="bar"><div class="bar-fill" id="physicians-bar"></div></div>
+                <span class="meter-fraction mono-num"><span id="physicians-used">–</span>/<span id="physicians-total">–</span></span>
+                <span class="meter-pct mono-num" id="physicians-pct">–</span>
+              </div>
+            </div>
+          </section>
 
-      <div class="layout">
-        <section class="cards">
-          <div class="card">
-            <h2>Patients</h2>
-            <div class="stat-row"><span>Total</span><strong id="patients-total">–</strong></div>
-            <div class="stat-row"><span>Waiting</span><strong id="patients-waiting">–</strong></div>
-            <div class="stat-row"><span>In a bed</span><strong id="patients-in-bed">–</strong></div>
-            <div class="stat-row"><span>Avg wait (waiting patients)</span><strong id="avg-wait">–</strong></div>
-          </div>
+          <section class="console-panel">
+            <div class="console-panel-titlebar">Patients</div>
+            <div class="console-panel-body">
+              <div class="stat-row"><span>Total</span><strong id="patients-total" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Waiting</span><strong id="patients-waiting" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>In a bed</span><strong id="patients-in-bed" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Avg wait (waiting)</span><strong id="avg-wait" class="mono-num">–</strong></div>
+            </div>
+          </section>
 
-          <div class="card">
-            <h2>Beds</h2>
-            <div class="stat-row"><span><span id="beds-occupied">–</span> / <span id="beds-total">–</span> occupied</span><strong id="beds-pct">–</strong></div>
-            <div class="bar"><div class="bar-fill" id="beds-bar"></div></div>
-          </div>
+          <section class="console-panel">
+            <div class="console-panel-titlebar">Hospital Float Pool</div>
+            <div class="console-panel-body">
+              <div class="stat-row"><span>Extra nurses</span><strong id="float-nurses" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Extra physicians</span><strong id="float-physicians" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Extra rooms</span><strong id="float-rooms" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Overflow beds</span><strong id="overflow-beds" class="mono-num">–</strong></div>
+            </div>
+          </section>
 
-          <div class="card">
-            <h2>Rooms</h2>
-            <div class="stat-row"><span><span id="rooms-in-use">–</span> / <span id="rooms-total">–</span> in use</span><strong id="rooms-pct">–</strong></div>
-            <div class="bar"><div class="bar-fill" id="rooms-bar"></div></div>
-          </div>
+          <section class="console-panel">
+            <div class="console-panel-titlebar">Arrivals This Session</div>
+            <div class="console-panel-body">
+              <div class="stat-row"><span>Ambulance</span><strong id="arrivals-ambulance" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Walk-in</span><strong id="arrivals-walkin" class="mono-num">–</strong></div>
+              <div class="stat-row"><span>Relocated</span><strong id="arrivals-relocated" class="mono-num">–</strong></div>
+            </div>
+          </section>
+        </div>
 
-          <div class="card">
-            <h2>Nurses</h2>
-            <div class="stat-row"><span><span id="nurses-used">–</span> / <span id="nurses-total">–</span> patient slots filled</span><strong id="nurses-pct">–</strong></div>
-            <div class="bar"><div class="bar-fill" id="nurses-bar"></div></div>
-          </div>
+        <div class="console-column console-column-center">
+          <section id="nearby-hospitals-panel" class="nearby-hospitals-panel console-panel hidden">
+            <div class="console-panel-titlebar">Nearby Hospitals <span class="simulated-badge">Simulated</span></div>
+            <div class="console-panel-body">
+              <div id="nearby-hospitals-list"></div>
+            </div>
+          </section>
 
-          <div class="card">
-            <h2>Physicians</h2>
-            <div class="stat-row"><span><span id="physicians-used">–</span> / <span id="physicians-total">–</span> patient slots filled</span><strong id="physicians-pct">–</strong></div>
-            <div class="bar"><div class="bar-fill" id="physicians-bar"></div></div>
-          </div>
+          <aside class="recommendations-panel console-panel">
+            <div class="console-panel-titlebar">
+              Recommendations
+              <button id="btn-apply-all" class="apply-all-button">Apply All</button>
+            </div>
+            <div class="console-panel-body">
+              <div id="recommendations-list"><p class="muted">Loading…</p></div>
+            </div>
+          </aside>
+        </div>
 
-          <div class="card">
-            <h2>Arrivals This Session</h2>
-            <div class="stat-row"><span>🚑 Ambulance</span><strong id="arrivals-ambulance">–</strong></div>
-            <div class="stat-row"><span>🚶 Walk-in</span><strong id="arrivals-walkin">–</strong></div>
-            <div class="stat-row"><span>🔀 Relocated</span><strong id="arrivals-relocated">–</strong></div>
-          </div>
-
-          <div class="card">
-            <h2>Hospital Float Pool</h2>
-            <div class="stat-row"><span>Extra nurses available</span><strong id="float-nurses">–</strong></div>
-            <div class="stat-row"><span>Extra physicians available</span><strong id="float-physicians">–</strong></div>
-            <div class="stat-row"><span>Extra rooms available</span><strong id="float-rooms">–</strong></div>
-            <div class="stat-row"><span>Overflow beds available</span><strong id="overflow-beds">–</strong></div>
-          </div>
-        </section>
-
-        <aside class="recommendations-panel">
-          <div class="recommendations-header">
-            <h2>Recommendations</h2>
-            <button id="btn-apply-all" class="apply-all-button">Apply All</button>
-          </div>
-          <div id="recommendations-list"><p class="muted">Loading…</p></div>
-        </aside>
+        <div class="console-column console-column-right">
+          <section class="console-panel">
+            <div class="console-panel-titlebar">
+              Activity Feed
+              <button type="button" id="live-feed-view-log" class="panel-link-button">View full log</button>
+            </div>
+            <div class="console-panel-body">
+              <div id="live-event-log-list" class="event-log-list"></div>
+            </div>
+          </section>
+        </div>
       </div>
     </section>
 
-    <section class="tab-content hidden" data-tab-content="patients">
-      <section class="breach-breakdown">
+    <section class="tab-content patients-view" data-tab-content="patients">
+      <section class="breach-breakdown compact-panel">
         <h2>Breach Breakdown by Tier</h2>
         <table class="breach-table">
           <thead>
@@ -134,10 +217,34 @@
 
       <section class="patients-panel">
         <button id="toggle-patients" class="toggle-button">
-          👥 Patients This Run (<span id="patients-count">0</span>) <span class="chevron">▾</span>
+          Patients This Run (<span id="patients-count">0</span>) <span class="chevron">▾</span>
         </button>
-        <div id="patients-list-container" class="patients-list-container hidden">
-          <div id="patients-list"></div>
+        <div id="patients-list-container" class="patients-list-container">
+          <div class="patients-toolbar">
+            <div class="tier-filter" id="tier-filter" role="group" aria-label="Filter by tier">
+              <button type="button" class="tier-filter-chip active" data-tier-filter="all" title="Show every tier">All</button>
+              <button type="button" class="tier-filter-chip" data-tier-filter="1" title="Tier 1 — immediately life-threatening">T1</button>
+              <button type="button" class="tier-filter-chip" data-tier-filter="2" title="Tier 2 — emergent">T2</button>
+              <button type="button" class="tier-filter-chip" data-tier-filter="3" title="Tier 3 — urgent">T3</button>
+              <button type="button" class="tier-filter-chip" data-tier-filter="4" title="Tier 4 — less urgent">T4</button>
+              <button type="button" class="tier-filter-chip" data-tier-filter="5" title="Tier 5 — non-urgent">T5</button>
+            </div>
+          </div>
+          <div class="patients-table-scroll">
+            <table class="patients-table" id="patients-table">
+              <thead>
+                <tr>
+                  <th data-sort-key="name">Name</th>
+                  <th data-sort-key="tier">Tier</th>
+                  <th data-sort-key="injury">Injury</th>
+                  <th data-sort-key="source">Source</th>
+                  <th data-sort-key="status_label">Status</th>
+                  <th data-sort-key="wait_minutes" class="sort-desc">Wait</th>
+                </tr>
+              </thead>
+              <tbody id="patients-list"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -147,16 +254,18 @@
       </section>
     </section>
 
-    <section class="tab-content hidden" data-tab-content="network">
-      <section class="breach-breakdown">
-        <h2>Hospital Network <span class="simulated-badge">Simulated</span></h2>
-        <div id="network-map" class="network-map"></div>
-      </section>
+    <section class="tab-content network-view" data-tab-content="network">
+      <div class="network-split">
+        <section class="console-panel network-map-panel">
+          <div class="console-panel-titlebar">Hospital Network <span class="simulated-badge">Simulated</span></div>
+          <div id="network-map" class="network-map"></div>
+        </section>
 
-      <section class="breach-breakdown">
-        <h2>All Facilities</h2>
-        <div id="network-facility-list"></div>
-      </section>
+        <section class="console-panel network-list-panel">
+          <div class="console-panel-titlebar">All Facilities</div>
+          <div id="network-facility-list" class="console-panel-body network-facility-list-scroll"></div>
+        </section>
+      </div>
     </section>
 
     <section class="tab-content hidden" data-tab-content="impact">
@@ -209,20 +318,23 @@
         </div>
       </section>
 
-      <section class="breach-breakdown">
-        <h2>Avg Wait Over Time</h2>
-        <canvas id="chart-wait" width="600" height="150" class="trend-chart"></canvas>
-      </section>
-
-      <section class="breach-breakdown">
-        <h2>Tier 1–2 Breaches Over Time</h2>
-        <canvas id="chart-breaches" width="600" height="150" class="trend-chart"></canvas>
+      <section class="breach-breakdown charts-panel">
+        <div class="charts-grid">
+          <div class="chart-block">
+            <h3 class="chart-title">Avg Wait Over Time <span class="chart-unit">(minutes)</span></h3>
+            <canvas id="chart-wait" width="600" height="180" class="trend-chart"></canvas>
+          </div>
+          <div class="chart-block">
+            <h3 class="chart-title">Tier 1–2 Breaches Over Time <span class="chart-unit">(count)</span></h3>
+            <canvas id="chart-breaches" width="600" height="180" class="trend-chart"></canvas>
+          </div>
+        </div>
       </section>
 
       <section class="breach-breakdown">
         <div class="report-header-row">
           <h2>Shift Handoff Report <span class="simulated-badge">Simulated</span></h2>
-          <button id="btn-generate-report" class="apply-all-button">📋 Generate situation report</button>
+          <button id="btn-generate-report" class="apply-all-button">Generate situation report</button>
         </div>
 
         <div id="situation-report-empty" class="hidden">
@@ -249,7 +361,22 @@
     </section>
 
     <section class="tab-content hidden" data-tab-content="how-it-works">
-      <section class="breach-breakdown">
+      <div class="reference-layout">
+        <nav class="reference-toc" aria-label="Table of contents">
+          <div class="reference-toc-title">On this page</div>
+          <a href="#ref-simulated-clock">The simulated clock</a>
+          <a href="#ref-priority-tiers">Priority tiers &amp; targets</a>
+          <a href="#ref-escalation-ladder">The escalation ladder</a>
+          <a href="#ref-proactive-projection">Proactive projection</a>
+          <a href="#ref-left-without-being-seen">Left without being seen</a>
+          <a href="#ref-relocation-rules">Relocation rules</a>
+          <a href="#ref-simulated-data">Simulated data</a>
+          <a href="#ref-situation-report">Situation report</a>
+          <a href="#ref-edflow-assistant">EDFlow Assistant</a>
+          <a href="#ref-impact-of-edflow">Impact of EDFlow</a>
+        </nav>
+
+      <section class="breach-breakdown reference-content">
         <h2>How EDFlow Works</h2>
         <p class="how-it-works-text">
           EDFlow is a rules-based decision-support demo for emergency
@@ -259,7 +386,7 @@
           thresholds, not a machine-learning model.
         </p>
 
-        <h3>The simulated clock</h3>
+        <h3 id="ref-simulated-clock">The simulated clock</h3>
         <p class="how-it-works-text">
           EDFlow runs on a compressed clock: 1 real second = 1 simulated
           minute. Every wait time, length of stay, and target on this page
@@ -268,26 +395,26 @@
           surge represent a realistic half-hour of ED activity.
         </p>
 
-        <h3>Priority tiers and wait-time targets</h3>
+        <h3 id="ref-priority-tiers">Priority tiers and wait-time targets</h3>
         <p class="how-it-works-text">
           Every patient is assigned a priority tier on arrival. The waiting
           queue is always served in tier order — Tier 1 first — regardless
           of who arrived first.
         </p>
-        <table class="breach-table">
+        <table class="breach-table reference-tier-table">
           <thead>
             <tr><th>Tier</th><th>Meaning</th><th>Target wait</th></tr>
           </thead>
           <tbody>
-            <tr><td><span class="tier-badge tier-1">Tier 1</span></td><td>Immediately life-threatening</td><td>Immediate</td></tr>
-            <tr><td><span class="tier-badge tier-2">Tier 2</span></td><td>Emergent</td><td>10 min</td></tr>
-            <tr><td><span class="tier-badge tier-3">Tier 3</span></td><td>Urgent</td><td>30 min</td></tr>
-            <tr><td><span class="tier-badge tier-4">Tier 4</span></td><td>Less urgent</td><td>60 min</td></tr>
-            <tr><td><span class="tier-badge tier-5">Tier 5</span></td><td>Non-urgent</td><td>120 min</td></tr>
+            <tr><td><span class="tier-badge tier-1">T1</span></td><td>Immediately life-threatening</td><td class="mono-num">Immediate</td></tr>
+            <tr><td><span class="tier-badge tier-2">T2</span></td><td>Emergent</td><td class="mono-num">10 min</td></tr>
+            <tr><td><span class="tier-badge tier-3">T3</span></td><td>Urgent</td><td class="mono-num">30 min</td></tr>
+            <tr><td><span class="tier-badge tier-4">T4</span></td><td>Less urgent</td><td class="mono-num">60 min</td></tr>
+            <tr><td><span class="tier-badge tier-5">T5</span></td><td>Non-urgent</td><td class="mono-num">120 min</td></tr>
           </tbody>
         </table>
 
-        <h3>The escalation ladder</h3>
+        <h3 id="ref-escalation-ladder">The escalation ladder</h3>
         <p class="how-it-works-text">
           When a Tier 1–2 patient is past their target — or one is
           projected to be soon (see below) — EDFlow escalates through four
@@ -308,7 +435,7 @@
           beds than the reserve it's drawing from actually has.
         </p>
 
-        <h3>Proactive breach projection</h3>
+        <h3 id="ref-proactive-projection">Proactive breach projection</h3>
         <p class="how-it-works-text">
           EDFlow doesn't only react after a Tier 1–2 patient has already
           missed their target — it also watches how fast beds are filling
@@ -321,7 +448,7 @@
           breach actually happens, not after.
         </p>
 
-        <h3>Left without being seen</h3>
+        <h3 id="ref-left-without-being-seen">Left without being seen</h3>
         <p class="how-it-works-text">
           Lower-tier patients (Tiers 3–5) don't wait forever: if a patient's
           wait passes twice their tier's target, they leave without being
@@ -331,7 +458,7 @@
           eligible, since they're always served first.
         </p>
 
-        <h3>Relocation rules</h3>
+        <h3 id="ref-relocation-rules">Relocation rules</h3>
         <ul class="how-it-works-list">
           <li>Tier 1 patients are never relocated.</li>
           <li>Lower-tier ambulance arrivals (Tiers 3–5) are relocated first.</li>
@@ -340,7 +467,7 @@
           <li>Relocation only ever happens with explicit user approval — nothing here is automatic.</li>
         </ul>
 
-        <h3>Simulated data</h3>
+        <h3 id="ref-simulated-data">Simulated data</h3>
         <p class="how-it-works-text">
           All patients, injuries, and nearby-facility data (hospitals and
           urgent care sites) are entirely synthetic and randomly generated.
@@ -352,7 +479,7 @@
           it anywhere in EDFlow.
         </p>
 
-        <h3>Situation report</h3>
+        <h3 id="ref-situation-report">Situation report</h3>
         <p class="how-it-works-text">
           The "Generate situation report" button on the Impact tab builds
           a shift-handoff report from a fixed, deterministic template —
@@ -361,7 +488,7 @@
           and can never disagree with what's on screen.
         </p>
 
-        <h3>EDFlow Assistant</h3>
+        <h3 id="ref-edflow-assistant">EDFlow Assistant</h3>
         <p class="how-it-works-text">
           The chat button in the bottom-right corner is a small AI-backed
           assistant that explains the current simulated state and the
@@ -375,7 +502,7 @@
           about this simulated dashboard, not a real patient or hospital.
         </p>
 
-        <h3>Impact of EDFlow (simulated comparison)</h3>
+        <h3 id="ref-impact-of-edflow">Impact of EDFlow (simulated comparison)</h3>
         <p class="how-it-works-text">
           Behind the scenes, a second, parallel copy of this ED runs on
           the exact same arrivals — same patients, same tiers, same
@@ -390,14 +517,28 @@
           a real historical control group.
         </p>
       </section>
+      </div>
     </section>
-  </main>
+      </main>
+
+      <footer class="statusbar">
+        <span class="statusbar-connection">
+          <span class="status-dot-small status-green"></span>
+          Connected
+        </span>
+        <span id="last-updated" class="last-updated statusbar-updated"></span>
+        <span class="statusbar-note">Simulated data. Fictional patients only.</span>
+      </footer>
+    </div>
+  </div>
 
   <div id="hospital-detail-modal" class="modal-overlay hidden">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="modal-hospital-name">Facility</h2>
-        <button id="modal-close" class="modal-close-button">✕</button>
+        <button id="modal-close" class="modal-close-button" aria-label="Close">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
       </div>
 
       <div id="modal-hospital-detail">
@@ -464,8 +605,8 @@
 
           <div class="card">
             <h2>Arrivals This Session</h2>
-            <div class="stat-row"><span>🚑 Ambulance</span><strong id="modal-arrivals-ambulance">–</strong></div>
-            <div class="stat-row"><span>🚶 Walk-in</span><strong id="modal-arrivals-walkin">–</strong></div>
+            <div class="stat-row"><span>Ambulance</span><strong id="modal-arrivals-ambulance">–</strong></div>
+            <div class="stat-row"><span>Walk-in</span><strong id="modal-arrivals-walkin">–</strong></div>
           </div>
 
           <div class="card">
@@ -497,14 +638,20 @@
   <!-- Assistant widget: a floating button + panel that sits outside the tab
        system entirely, so it's visible and stays open across every tab. -->
   <div id="assistant-widget">
-    <button id="assistant-toggle" class="assistant-toggle" aria-label="Open EDFlow assistant">💬</button>
+    <button id="assistant-toggle" class="assistant-toggle" aria-label="Open EDFlow assistant">
+      <svg viewBox="0 0 20 20" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h14a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H9l-3.5 3v-3H3a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1Z"/></svg>
+    </button>
 
     <div id="assistant-panel" class="assistant-panel hidden">
       <div class="assistant-header">
         <span>EDFlow Assistant <span class="simulated-badge">Simulated</span></span>
         <div class="assistant-header-actions">
-          <button id="assistant-clear" class="assistant-icon-button" title="Clear conversation">🗑</button>
-          <button id="assistant-close" class="assistant-icon-button" title="Close">✕</button>
+          <button id="assistant-clear" class="assistant-icon-button" title="Clear conversation" aria-label="Clear conversation">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5h9M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M4.5 4.5l.6 8.4a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.4"/></svg>
+          </button>
+          <button id="assistant-close" class="assistant-icon-button" title="Close" aria-label="Close">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
         </div>
       </div>
 

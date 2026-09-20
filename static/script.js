@@ -4,6 +4,16 @@ const POLL_INTERVAL_MS = 2000;
 let fetchInProgress = false;
 let surgeInterval = null;
 
+// Full meaning behind each T1-T5 abbreviation, used as a tooltip
+// wherever the short badge form is shown (the Patients table).
+const TIER_MEANINGS = {
+  1: "Tier 1 — immediately life-threatening (immediate target)",
+  2: "Tier 2 — emergent (10 min target)",
+  3: "Tier 3 — urgent (30 min target)",
+  4: "Tier 4 — less urgent (60 min target)",
+  5: "Tier 5 — non-urgent (120 min target)",
+};
+
 // Which facility capabilities are relevant for a given breaching tier —
 // a simple, rules-based heuristic for this demo, not a real clinical
 // routing rule. Severe tiers (1-2) want acute-care capabilities; low
@@ -16,7 +26,11 @@ const TIER_RELEVANT_CAPABILITIES = {
   5: ["urgent_care", "pediatric"],
 };
 
-const STATUS_COLORS = { green: "#1b8a5a", yellow: "#b8860b", red: "#c0392b" };
+// Kept in sync with the CSS status tokens in static/style.css
+// (--color-success/--color-warning/--color-danger and --color-accent) —
+// canvas and Leaflet markers can't consume CSS variables directly.
+const STATUS_COLORS = { green: "#1e7a4c", yellow: "#92600a", red: "#ae3b2e" };
+const ACCENT_COLOR = "#0e6e6a";
 
 let networkMap = null;
 let networkMarkers = {};
@@ -33,8 +47,62 @@ const MAX_TREND_POINTS = 150; // 5 minutes of history at the 2s poll interval
 let waitHistory = [];
 let breachHistory = [];
 
+function prefersReducedMotion() {
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// Elements currently mid-tween, keyed by element so a value that changes
+// again before the previous animation finishes cancels cleanly instead of
+// the two fighting over the same node.
+const activeNumberTweens = new WeakMap();
+
 function setText(id, value) {
-  document.getElementById(id).textContent = value;
+  const target = document.getElementById(id);
+  if (!target) return;
+
+  const strValue = String(value);
+  // Only whole numbers tween — percentages, "12.3 min", and placeholder
+  // dashes ("–") render immediately, since animating a formatted string
+  // (units, decimals) would need to interpolate more than a plain count.
+  const isPlainInteger = /^-?\d+$/.test(strValue);
+
+  if (!isPlainInteger || prefersReducedMotion()) {
+    if (activeNumberTweens.has(target)) {
+      cancelAnimationFrame(activeNumberTweens.get(target));
+      activeNumberTweens.delete(target);
+    }
+    target.textContent = strValue;
+    delete target.dataset.tweenValue;
+    return;
+  }
+
+  const to = parseInt(strValue, 10);
+  const from = target.dataset.tweenValue !== undefined ? parseInt(target.dataset.tweenValue, 10) : to;
+  target.dataset.tweenValue = to;
+
+  if (activeNumberTweens.has(target)) {
+    cancelAnimationFrame(activeNumberTweens.get(target));
+    activeNumberTweens.delete(target);
+  }
+
+  if (from === to) {
+    target.textContent = strValue;
+    return;
+  }
+
+  const duration = 300;
+  const start = performance.now();
+  const step = (now) => {
+    const progress = Math.min((now - start) / duration, 1);
+    target.textContent = String(Math.round(from + (to - from) * progress));
+    if (progress < 1) {
+      activeNumberTweens.set(target, requestAnimationFrame(step));
+    } else {
+      target.textContent = strValue;
+      activeNumberTweens.delete(target);
+    }
+  };
+  activeNumberTweens.set(target, requestAnimationFrame(step));
 }
 
 function barColorClass(pct) {
@@ -114,8 +182,8 @@ function renderRecommendations(recommendations) {
       projection.className = "recommendation-projection";
       projection.textContent =
         rec.projected_breach_minutes <= 0.5
-          ? "⏱ Tier 1-2 breach projected imminently"
-          : `⏱ Tier 1-2 breach projected in ~${rec.projected_breach_minutes} min`;
+          ? "Tier 1-2 breach projected imminently"
+          : `Tier 1-2 breach projected in ~${rec.projected_breach_minutes} min`;
       item.appendChild(projection);
     }
 
@@ -163,42 +231,81 @@ async function applyAllRecommendations() {
   await postAndRefresh("/recommendations/apply-all");
 }
 
+// Patients table (Step 4): sortable/filterable client-side over the same
+// patients_list payload every poll already delivers — no new endpoint or
+// data, just a richer view over it.
+let latestPatientsData = [];
+let patientsSortKey = "wait_minutes";
+let patientsSortDir = "desc";
+let patientsTierFilterValue = "all";
+
 function renderPatientsList(patients) {
+  latestPatientsData = patients;
   setText("patients-count", patients.length);
+  renderPatientsTable();
+}
 
-  const container = document.getElementById("patients-list");
-  container.innerHTML = "";
+function renderPatientsTable() {
+  const tbody = document.getElementById("patients-list");
+  if (!tbody) return;
+  tbody.innerHTML = "";
 
-  patients.forEach((p) => {
-    const row = document.createElement("div");
-    row.className = "patient-row" + (p.overdue ? " overdue" : "");
+  let rows = latestPatientsData;
+  if (patientsTierFilterValue !== "all") {
+    rows = rows.filter((p) => String(p.tier) === patientsTierFilterValue);
+  }
 
-    const main = document.createElement("div");
-    main.className = "patient-row-main";
+  rows = [...rows].sort((a, b) => {
+    let av = a[patientsSortKey];
+    let bv = b[patientsSortKey];
+    if (typeof av === "string") av = av.toLowerCase();
+    if (typeof bv === "string") bv = bv.toLowerCase();
+    if (av < bv) return patientsSortDir === "asc" ? -1 : 1;
+    if (av > bv) return patientsSortDir === "asc" ? 1 : -1;
+    return 0;
+  });
 
-    const nameEl = document.createElement("strong");
-    nameEl.textContent = p.name;
+  if (rows.length === 0) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 6;
+    td.className = "muted";
+    td.textContent =
+      latestPatientsData.length === 0 ? "No patients yet this session." : "No patients match this tier filter.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
 
-    const tierEl = document.createElement("span");
-    tierEl.className = `tier-badge tier-${p.tier}`;
-    tierEl.textContent = `Tier ${p.tier}`;
+  rows.forEach((p) => {
+    const tr = document.createElement("tr");
+    if (p.overdue) tr.className = "overdue";
 
-    main.appendChild(nameEl);
-    main.appendChild(tierEl);
+    const nameTd = document.createElement("td");
+    nameTd.textContent = p.name;
 
-    const detail = document.createElement("div");
-    detail.className = "patient-row-detail";
-    const sourceLabel = p.source === "ambulance" ? "🚑 Ambulance" : "🚶 Walk-in";
-    detail.textContent = `${p.injury} · ${sourceLabel} · ${p.status_label}`;
+    const tierTd = document.createElement("td");
+    const tierBadge = document.createElement("span");
+    tierBadge.className = `tier-badge tier-${p.tier}`;
+    tierBadge.textContent = `T${p.tier}`;
+    tierBadge.title = TIER_MEANINGS[p.tier] || "";
+    tierTd.appendChild(tierBadge);
 
-    const wait = document.createElement("div");
-    wait.className = "patient-row-wait" + (p.overdue ? " overdue-text" : "");
-    wait.textContent = `${p.wait_minutes} min wait (target: ${p.target_minutes} min)`;
+    const injuryTd = document.createElement("td");
+    injuryTd.textContent = p.injury;
 
-    row.appendChild(main);
-    row.appendChild(detail);
-    row.appendChild(wait);
-    container.appendChild(row);
+    const sourceTd = document.createElement("td");
+    sourceTd.textContent = p.source === "ambulance" ? "Ambulance" : "Walk-in";
+
+    const statusTd = document.createElement("td");
+    statusTd.textContent = p.status_label;
+
+    const waitTd = document.createElement("td");
+    waitTd.className = "mono-num" + (p.overdue ? " overdue-text" : "");
+    waitTd.textContent = `${p.wait_minutes} min`;
+
+    tr.append(nameTd, tierTd, injuryTd, sourceTd, statusTd, waitTd);
+    tbody.appendChild(tr);
   });
 }
 
@@ -381,8 +488,8 @@ function initNetworkMap() {
 
   L.circleMarker([homeCoords.lat, homeCoords.lng], {
     radius: 10,
-    color: "#0b3d91",
-    fillColor: "#0b3d91",
+    color: ACCENT_COLOR,
+    fillColor: ACCENT_COLOR,
     fillOpacity: 1,
     weight: 2,
   })
@@ -393,7 +500,7 @@ function initNetworkMap() {
 function renderNetworkMarkers(facilities) {
   if (!networkMap) return;
   facilities.forEach((f) => {
-    const color = STATUS_COLORS[f.status] || "#6b7280";
+    const color = STATUS_COLORS[f.status] || "#8b8578";
     if (networkMarkers[f.id]) {
       networkMarkers[f.id].setStyle({ color, fillColor: color });
     } else {
@@ -432,7 +539,16 @@ function renderNetworkFacilityCard(f) {
   detail.className = "facility-card-detail";
   detail.textContent =
     `Avg wait: ${f.avg_wait_minutes} min · ${f.beds_available} beds/slots available · ` +
-    `${f.travel_time_minutes} min away (${f.distance_miles} mi) · ${f.capabilities.join(", ")}`;
+    `${f.travel_time_minutes} min away (${f.distance_miles} mi)`;
+
+  const chips = document.createElement("div");
+  chips.className = "capability-chips";
+  f.capabilities.forEach((c) => {
+    const chip = document.createElement("span");
+    chip.className = "capability-chip";
+    chip.textContent = c;
+    chips.appendChild(chip);
+  });
 
   const directionsButton = document.createElement("button");
   directionsButton.className = "directions-button";
@@ -445,6 +561,7 @@ function renderNetworkFacilityCard(f) {
 
   card.appendChild(header);
   card.appendChild(detail);
+  card.appendChild(chips);
   card.appendChild(directionsButton);
   return card;
 }
@@ -535,12 +652,32 @@ function closeHospitalModal() {
   }
 }
 
+// Tracks each banner's last-rendered level, so a brief pulse only fires
+// on an actual change — not on every 2-second poll that happens to
+// report the same level again.
+const lastStatusLevel = {};
+
 function renderStatusBanner(prefix, status) {
   const banner = document.getElementById(`${prefix}status-banner`);
   if (!banner) return;
+
+  const changed = lastStatusLevel[prefix] !== undefined && lastStatusLevel[prefix] !== status.level;
+  lastStatusLevel[prefix] = status.level;
+
   banner.className = "status-banner status-" + status.level;
   setText(`${prefix}status-level`, status.level.toUpperCase());
   setText(`${prefix}status-reason`, status.reason);
+
+  // A distinct shape per status (not just a color swap) — status must
+  // never be conveyed by color alone.
+  const icon = document.getElementById(`${prefix}status-icon`);
+  if (icon) icon.innerHTML = ICONS["status-" + status.level] || "";
+
+  if (changed && !prefersReducedMotion()) {
+    banner.classList.remove("status-pulse");
+    void banner.offsetWidth; // force reflow so a repeated pulse restarts cleanly
+    banner.classList.add("status-pulse");
+  }
 }
 
 // Fills the Patients/Beds/Rooms/Nurses/Physicians/Arrivals/Float-Pool
@@ -610,7 +747,7 @@ function createEventLogRow(event) {
   return row;
 }
 
-function renderEventLog(containerId, events) {
+function renderEventLog(containerId, events, limit) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
@@ -623,10 +760,18 @@ function renderEventLog(containerId, events) {
     return;
   }
 
-  events.forEach((event) => container.appendChild(createEventLogRow(event)));
+  // events is already newest-first (see app/event_log.py), so a limit
+  // just takes the most recent N rather than the oldest.
+  const shown = limit ? events.slice(0, limit) : events;
+  shown.forEach((event) => container.appendChild(createEventLogRow(event)));
 }
 
-function drawTrendChart(canvasId, dataPoints, color) {
+// Tier 2's target wait (see app/config.py's TIER_TARGET_MINUTES, and the
+// tier table on the How It Works page) — drawn as a reference line on the
+// wait chart so a plain number has something concrete to read against.
+const TIER2_TARGET_MINUTES = 10;
+
+function drawTrendChart(canvasId, dataPoints, color, options = {}) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -634,22 +779,66 @@ function drawTrendChart(canvasId, dataPoints, color) {
   const height = canvas.height;
   ctx.clearRect(0, 0, width, height);
 
+  const leftPad = 32;
+  const rightPad = 10;
+  const topPad = 16;
+  const bottomPad = 20;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+
   if (dataPoints.length < 2) {
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = "13px sans-serif";
-    ctx.fillText("Collecting data — leave this tab open during a surge…", 10, height / 2);
+    ctx.fillStyle = "#8b8578";
+    ctx.font = "13px 'IBM Plex Sans', sans-serif";
+    ctx.fillText("Collecting data — leave this tab open during a surge…", leftPad, height / 2);
     return;
   }
 
-  const realMax = Math.max(...dataPoints);
+  const peak = Math.max(...dataPoints);
+  const realMax = Math.max(peak, options.thresholdValue || 0);
   const divisor = realMax || 1; // avoid divide-by-zero without lying about the peak
-  const stepX = width / (dataPoints.length - 1);
-  const topPadding = 10;
 
+  // Light gridlines with numeric y-axis labels at 0 / half / max.
+  ctx.strokeStyle = "#e4e0d6";
+  ctx.lineWidth = 1;
+  ctx.fillStyle = "#8b8578";
+  ctx.font = "10px 'IBM Plex Mono', monospace";
+  ctx.textAlign = "right";
+  [0, 0.5, 1].forEach((frac) => {
+    const y = topPad + plotHeight * (1 - frac);
+    ctx.beginPath();
+    ctx.moveTo(leftPad, y + 0.5);
+    ctx.lineTo(width - rightPad, y + 0.5);
+    ctx.stroke();
+    ctx.fillText(String(Math.round(divisor * frac)), leftPad - 6, y + 3);
+  });
+  ctx.textAlign = "left";
+
+  // Tier-target threshold line, when one applies to this chart.
+  if (options.thresholdValue) {
+    const ty = topPad + plotHeight * (1 - options.thresholdValue / divisor);
+    ctx.save();
+    ctx.strokeStyle = "#ae3b2e";
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(leftPad, ty);
+    ctx.lineTo(width - rightPad, ty);
+    ctx.stroke();
+    ctx.restore();
+    // Left-aligned, just below the line — the peak annotation owns the
+    // top-right corner, so this avoids colliding with it even when the
+    // threshold sits near the top of the chart.
+    ctx.fillStyle = "#ae3b2e";
+    ctx.font = "10px 'IBM Plex Mono', monospace";
+    ctx.fillText(options.thresholdLabel || "target", leftPad + 4, ty + 11);
+  }
+
+  // The data line, with a soft fill underneath.
+  const stepX = plotWidth / (dataPoints.length - 1);
   ctx.beginPath();
   dataPoints.forEach((value, i) => {
-    const x = i * stepX;
-    const y = height - (value / divisor) * (height - topPadding);
+    const x = leftPad + i * stepX;
+    const y = topPad + plotHeight * (1 - value / divisor);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
@@ -657,16 +846,33 @@ function drawTrendChart(canvasId, dataPoints, color) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.lineTo(width, height);
-  ctx.lineTo(0, height);
+  ctx.lineTo(leftPad + plotWidth, topPad + plotHeight);
+  ctx.lineTo(leftPad, topPad + plotHeight);
   ctx.closePath();
   ctx.fillStyle = color + "26"; // ~15% opacity fill under the line
   ctx.fill();
 
-  // Label the peak so the chart is readable without hovering.
-  ctx.fillStyle = "#374151";
-  ctx.font = "11px sans-serif";
-  ctx.fillText(`peak: ${realMax}`, width - 70, 12);
+  // Axis lines and the peak value, annotated directly on the chart.
+  ctx.strokeStyle = "#d2ccbd";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(leftPad, topPad);
+  ctx.lineTo(leftPad, topPad + plotHeight);
+  ctx.lineTo(leftPad + plotWidth, topPad + plotHeight);
+  ctx.stroke();
+
+  ctx.fillStyle = "#1c1a16";
+  ctx.font = "11px 'IBM Plex Mono', monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(`peak: ${peak}`, width - rightPad, topPad - 4);
+  ctx.textAlign = "left";
+
+  ctx.fillStyle = "#8b8578";
+  ctx.font = "10px 'IBM Plex Sans', sans-serif";
+  ctx.fillText("earlier", leftPad, height - 4);
+  ctx.textAlign = "right";
+  ctx.fillText("now", width - rightPad, height - 4);
+  ctx.textAlign = "left";
 }
 
 function renderImpactTab(data) {
@@ -692,8 +898,11 @@ function renderImpactTab(data) {
   if (waitHistory.length > MAX_TREND_POINTS) waitHistory.shift();
   if (breachHistory.length > MAX_TREND_POINTS) breachHistory.shift();
 
-  drawTrendChart("chart-wait", waitHistory, "#0b3d91");
-  drawTrendChart("chart-breaches", breachHistory, "#c0392b");
+  drawTrendChart("chart-wait", waitHistory, ACCENT_COLOR, {
+    thresholdValue: TIER2_TARGET_MINUTES,
+    thresholdLabel: "Tier 2 target (10 min)",
+  });
+  drawTrendChart("chart-breaches", breachHistory, STATUS_COLORS.red);
 
   renderImpactComparison(data.impact);
 }
@@ -938,6 +1147,31 @@ function el(tag, className, text) {
   return node;
 }
 
+// Small inline SVG icons for dynamically-generated content (static markup
+// icons live directly in index.html) — trusted, hardcoded strings only,
+// never built from user or server input.
+const ICONS = {
+  check: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>',
+  warning:
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 14.5 13.3H1.5Z"/><path d="M8 6.4v3.2"/><circle cx="8" cy="11.6" r="0.6" fill="currentColor" stroke="none"/></svg>',
+  // Status shapes — a distinct SILHOUETTE per level (circle/triangle/
+  // octagon), not just a color swap, so status is never conveyed by
+  // color alone (Step 3).
+  "status-green":
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><circle cx="8" cy="8" r="6.5"/></svg>',
+  "status-yellow":
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 1.6 14.8 13.6H1.2Z"/></svg>',
+  "status-red":
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M5.1 1.6h5.8L14.4 5.1v5.8L10.9 14.4H5.1L1.6 10.9V5.1Z"/></svg>',
+};
+
+function iconSpan(name, className) {
+  const span = document.createElement("span");
+  if (className) span.className = className;
+  span.innerHTML = ICONS[name] || "";
+  return span;
+}
+
 function buildReportStatTile(value, label) {
   const tile = el("div", "report-stat-tile");
   tile.appendChild(el("div", "report-stat-value", value));
@@ -1092,7 +1326,7 @@ function renderSituationReportDoc(summary) {
   container.appendChild(el("h3", null, "Outcome"));
   const recovered = summary.status.level === "green" && !summary.currently_in_red;
   const outcome = el("p", `report-outcome ${recovered ? "is-good" : "is-open"}`);
-  outcome.appendChild(el("span", "report-outcome-icon", recovered ? "✓" : "⚠"));
+  outcome.appendChild(iconSpan(recovered ? "check" : "warning", "report-outcome-icon"));
   outcome.appendChild(
     el(
       "span",
@@ -1236,6 +1470,7 @@ function render(data) {
   renderRelocationBanner(data.relocation);
   renderEventLog("event-log-list", data.event_log);
   renderEventLog("impact-event-log-list", data.event_log);
+  renderEventLog("live-event-log-list", data.event_log, 8);
   renderImpactTab(data);
 
   latestBreachSummary = data.breach_summary;
@@ -1256,6 +1491,22 @@ function showWakingUpNotice() {
     "status-reason",
     "The backend can take up to a minute to respond on its first request — retrying automatically."
   );
+  const skeletonMessage = document.getElementById("app-skeleton-message");
+  if (skeletonMessage) {
+    skeletonMessage.textContent = "Waking up the server, this can take up to a minute…";
+  }
+}
+
+// The skeleton overlay covers the whole app until the very first /state
+// fetch succeeds — after that, the app's own empty/placeholder states
+// (dashes, "no events yet", etc.) take over, so the skeleton never needs
+// to reappear for the rest of the session.
+let appSkeletonDismissed = false;
+function dismissAppSkeleton() {
+  if (appSkeletonDismissed) return;
+  appSkeletonDismissed = true;
+  const skeleton = document.getElementById("app-skeleton");
+  if (skeleton) skeleton.classList.add("dismissed");
 }
 
 async function fetchState(force = false) {
@@ -1271,6 +1522,7 @@ async function fetchState(force = false) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     hasLoadedOnce = true;
+    dismissAppSkeleton();
     render(data);
   } catch (e) {
     // The background poll (setInterval below) already retries every
@@ -1333,7 +1585,7 @@ async function startSurge() {
   surgeRunning = true;
 
   const button = document.getElementById("btn-surge");
-  button.textContent = "⏹ Stop Surge";
+  button.textContent = "Stop Surge";
   button.classList.add("surge-active");
 
   try {
@@ -1358,7 +1610,7 @@ function stopSurge() {
   }
   const button = document.getElementById("btn-surge");
   button.classList.remove("surge-active");
-  button.textContent = "🚨 Run Surge";
+  button.textContent = "Run Surge";
   // Cancels the generator server-side immediately, same as it running out
   // its duration/arrivals budget on its own.
   fetch("/surge/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch((e) =>
@@ -1383,6 +1635,13 @@ document.getElementById("btn-reset").addEventListener("click", async (e) => {
   // a fresh screen refresh (see the `force` flag on fetchState) so the
   // dashboard never gets stuck showing stale pre-reset numbers.
   //
+  // Destructive and irreversible (wipes every patient and the whole event
+  // log this session) — confirm before doing anything else. Deliberately
+  // has no keyboard shortcut of its own for the same reason.
+  if (!window.confirm("Reset the demo? This clears all patients and activity for this session.")) {
+    return;
+  }
+
   // The button is captured into a variable BEFORE any `await` — `e.currentTarget`
   // is reset to null by the browser once the event finishes dispatching,
   // which happens as soon as this handler crosses its first `await`. Using
@@ -1408,6 +1667,34 @@ document.getElementById("btn-reset").addEventListener("click", async (e) => {
 
 document.getElementById("toggle-patients").addEventListener("click", () => {
   document.getElementById("patients-list-container").classList.toggle("hidden");
+});
+
+// Sortable column headers — click toggles direction on the same column,
+// or switches to a new column (ascending, except Wait which defaults to
+// descending since the longest waits are usually what you want to see
+// first).
+document.querySelectorAll("#patients-table th[data-sort-key]").forEach((th) => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.sortKey;
+    if (patientsSortKey === key) {
+      patientsSortDir = patientsSortDir === "asc" ? "desc" : "asc";
+    } else {
+      patientsSortKey = key;
+      patientsSortDir = key === "wait_minutes" ? "desc" : "asc";
+    }
+    document.querySelectorAll("#patients-table th[data-sort-key]").forEach((h) => h.classList.remove("sort-asc", "sort-desc"));
+    th.classList.add(patientsSortDir === "asc" ? "sort-asc" : "sort-desc");
+    renderPatientsTable();
+  });
+});
+
+document.querySelectorAll("#tier-filter .tier-filter-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll("#tier-filter .tier-filter-chip").forEach((c) => c.classList.remove("active"));
+    chip.classList.add("active");
+    patientsTierFilterValue = chip.dataset.tierFilter;
+    renderPatientsTable();
+  });
 });
 
 document.getElementById("btn-apply-all").addEventListener("click", async (e) => {
@@ -1436,6 +1723,10 @@ document.querySelectorAll(".tab-button").forEach((button) => {
     button.classList.add("active");
     document.querySelector(`[data-tab-content="${button.dataset.tab}"]`).classList.remove("hidden");
 
+    // The top bar names whichever view is currently showing.
+    const topbarTitle = document.getElementById("topbar-title");
+    if (topbarTitle && button.dataset.viewTitle) topbarTitle.textContent = button.dataset.viewTitle;
+
     // Leaflet measures its container on creation, which fails silently if
     // the tab was hidden (display:none) at the time — so (re-)init and
     // force a resize check now that the container is actually visible.
@@ -1444,6 +1735,19 @@ document.querySelectorAll(".tab-button").forEach((button) => {
       if (networkMap) setTimeout(() => networkMap.invalidateSize(), 0);
     }
   });
+});
+
+// Sidebar collapse toggle: shrinks the sidebar to icons-only. Purely a
+// display preference — doesn't touch which tab is active or any data.
+document.getElementById("sidebar-collapse-toggle").addEventListener("click", () => {
+  document.getElementById("sidebar").classList.toggle("collapsed");
+});
+
+// The Live Ops activity feed is a compact read-only preview of the same
+// event log the Patients tab shows in full — this just switches tabs via
+// the existing mechanism above rather than duplicating that logic.
+document.getElementById("live-feed-view-log").addEventListener("click", () => {
+  document.querySelector('.tab-button[data-tab="patients"]').click();
 });
 
 document.getElementById("modal-close").addEventListener("click", closeHospitalModal);
@@ -1587,3 +1891,56 @@ setInterval(fetchHospitals, POLL_INTERVAL_MS);
 // catch block, so upgrade the message on a timer instead, once "LOADING…"
 // has been up long enough that it's clearly not a normal fast response.
 setTimeout(showWakingUpNotice, 2500);
+
+// Keyboard shortcuts (Step 5): 1-5 switch views, S starts/stops a surge.
+// Ignored while typing in a field, and with any modifier held, so this
+// never fights normal browser/OS shortcuts or text entry. Reset Demo
+// deliberately has no shortcut of its own — it's destructive and already
+// requires a confirmation click.
+const TAB_SHORTCUT_ORDER = ["live-ops", "patients", "network", "impact", "how-it-works"];
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const target = e.target;
+  const isTyping =
+    target &&
+    (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+  if (isTyping) return;
+
+  if (e.key >= "1" && e.key <= "5") {
+    const tab = TAB_SHORTCUT_ORDER[Number(e.key) - 1];
+    const button = document.querySelector(`.tab-button[data-tab="${tab}"]`);
+    if (button) {
+      e.preventDefault();
+      button.click();
+    }
+  } else if (e.key === "s" || e.key === "S") {
+    e.preventDefault();
+    document.getElementById("btn-surge").click();
+  }
+});
+
+// Narrow-screen notice (Step 5): EDFlow's layout is desktop-first: below
+// 900px the console grids stack into a single column instead of
+// breaking or scrolling horizontally, but it's still worth telling the
+// user this is a desktop-designed app. Dismissing it is remembered for
+// the rest of the browser session (sessionStorage), not just this page
+// load, but reappears in a fresh tab/session — it's a notice, not a
+// permanent setting.
+const NARROW_BANNER_DISMISSED_KEY = "edflow-narrow-banner-dismissed";
+const narrowBanner = document.getElementById("narrow-screen-banner");
+try {
+  if (narrowBanner && sessionStorage.getItem(NARROW_BANNER_DISMISSED_KEY) === "1") {
+    narrowBanner.classList.add("dismissed");
+  }
+} catch (e) {
+  // sessionStorage can throw in some private-browsing modes — the banner
+  // just won't remember being dismissed, which is a harmless fallback.
+}
+document.getElementById("dismiss-narrow-banner").addEventListener("click", () => {
+  if (narrowBanner) narrowBanner.classList.add("dismissed");
+  try {
+    sessionStorage.setItem(NARROW_BANNER_DISMISSED_KEY, "1");
+  } catch (e) {
+    // ignore — see above
+  }
+});
