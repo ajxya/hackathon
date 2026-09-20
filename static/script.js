@@ -29,8 +29,8 @@ const TIER_RELEVANT_CAPABILITIES = {
 // Kept in sync with the CSS status tokens in static/style.css
 // (--color-success/--color-warning/--color-danger and --color-accent) —
 // canvas and Leaflet markers can't consume CSS variables directly.
-const STATUS_COLORS = { green: "#1e7a4c", yellow: "#92600a", red: "#ae3b2e" };
-const ACCENT_COLOR = "#0e6e6a";
+const STATUS_COLORS = { green: "#15803d", yellow: "#b45309", red: "#dc2626" };
+const ACCENT_COLOR = "#dc2626";
 
 let networkMap = null;
 let networkMarkers = {};
@@ -47,62 +47,10 @@ const MAX_TREND_POINTS = 150; // 5 minutes of history at the 2s poll interval
 let waitHistory = [];
 let breachHistory = [];
 
-function prefersReducedMotion() {
-  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-// Elements currently mid-tween, keyed by element so a value that changes
-// again before the previous animation finishes cancels cleanly instead of
-// the two fighting over the same node.
-const activeNumberTweens = new WeakMap();
-
 function setText(id, value) {
   const target = document.getElementById(id);
   if (!target) return;
-
-  const strValue = String(value);
-  // Only whole numbers tween — percentages, "12.3 min", and placeholder
-  // dashes ("–") render immediately, since animating a formatted string
-  // (units, decimals) would need to interpolate more than a plain count.
-  const isPlainInteger = /^-?\d+$/.test(strValue);
-
-  if (!isPlainInteger || prefersReducedMotion()) {
-    if (activeNumberTweens.has(target)) {
-      cancelAnimationFrame(activeNumberTweens.get(target));
-      activeNumberTweens.delete(target);
-    }
-    target.textContent = strValue;
-    delete target.dataset.tweenValue;
-    return;
-  }
-
-  const to = parseInt(strValue, 10);
-  const from = target.dataset.tweenValue !== undefined ? parseInt(target.dataset.tweenValue, 10) : to;
-  target.dataset.tweenValue = to;
-
-  if (activeNumberTweens.has(target)) {
-    cancelAnimationFrame(activeNumberTweens.get(target));
-    activeNumberTweens.delete(target);
-  }
-
-  if (from === to) {
-    target.textContent = strValue;
-    return;
-  }
-
-  const duration = 300;
-  const start = performance.now();
-  const step = (now) => {
-    const progress = Math.min((now - start) / duration, 1);
-    target.textContent = String(Math.round(from + (to - from) * progress));
-    if (progress < 1) {
-      activeNumberTweens.set(target, requestAnimationFrame(step));
-    } else {
-      target.textContent = strValue;
-      activeNumberTweens.delete(target);
-    }
-  };
-  activeNumberTweens.set(target, requestAnimationFrame(step));
+  target.textContent = String(value);
 }
 
 function barColorClass(pct) {
@@ -486,10 +434,12 @@ function initNetworkMap() {
     maxZoom: 18,
   }).addTo(networkMap);
 
+  // Charcoal, not the accent red — a red-status facility marker must
+  // never be confused with the home ED's own fixed reference marker.
   L.circleMarker([homeCoords.lat, homeCoords.lng], {
     radius: 10,
-    color: ACCENT_COLOR,
-    fillColor: ACCENT_COLOR,
+    color: "#111827",
+    fillColor: "#111827",
     fillOpacity: 1,
     weight: 2,
   })
@@ -500,7 +450,7 @@ function initNetworkMap() {
 function renderNetworkMarkers(facilities) {
   if (!networkMap) return;
   facilities.forEach((f) => {
-    const color = STATUS_COLORS[f.status] || "#8b8578";
+    const color = STATUS_COLORS[f.status] || "#9ca3af";
     if (networkMarkers[f.id]) {
       networkMarkers[f.id].setStyle({ color, fillColor: color });
     } else {
@@ -652,17 +602,9 @@ function closeHospitalModal() {
   }
 }
 
-// Tracks each banner's last-rendered level, so a brief pulse only fires
-// on an actual change — not on every 2-second poll that happens to
-// report the same level again.
-const lastStatusLevel = {};
-
 function renderStatusBanner(prefix, status) {
   const banner = document.getElementById(`${prefix}status-banner`);
   if (!banner) return;
-
-  const changed = lastStatusLevel[prefix] !== undefined && lastStatusLevel[prefix] !== status.level;
-  lastStatusLevel[prefix] = status.level;
 
   banner.className = "status-banner status-" + status.level;
   setText(`${prefix}status-level`, status.level.toUpperCase());
@@ -672,12 +614,6 @@ function renderStatusBanner(prefix, status) {
   // never be conveyed by color alone.
   const icon = document.getElementById(`${prefix}status-icon`);
   if (icon) icon.innerHTML = ICONS["status-" + status.level] || "";
-
-  if (changed && !prefersReducedMotion()) {
-    banner.classList.remove("status-pulse");
-    void banner.offsetWidth; // force reflow so a repeated pulse restarts cleanly
-    banner.classList.add("status-pulse");
-  }
 }
 
 // Fills the Patients/Beds/Rooms/Nurses/Physicians/Arrivals/Float-Pool
@@ -787,7 +723,7 @@ function drawTrendChart(canvasId, dataPoints, color, options = {}) {
   const plotHeight = height - topPad - bottomPad;
 
   if (dataPoints.length < 2) {
-    ctx.fillStyle = "#8b8578";
+    ctx.fillStyle = "#9ca3af";
     ctx.font = "13px 'IBM Plex Sans', sans-serif";
     ctx.fillText("Collecting data — leave this tab open during a surge…", leftPad, height / 2);
     return;
@@ -798,9 +734,9 @@ function drawTrendChart(canvasId, dataPoints, color, options = {}) {
   const divisor = realMax || 1; // avoid divide-by-zero without lying about the peak
 
   // Light gridlines with numeric y-axis labels at 0 / half / max.
-  ctx.strokeStyle = "#e4e0d6";
+  ctx.strokeStyle = "#e5e5e5";
   ctx.lineWidth = 1;
-  ctx.fillStyle = "#8b8578";
+  ctx.fillStyle = "#9ca3af";
   ctx.font = "10px 'IBM Plex Mono', monospace";
   ctx.textAlign = "right";
   [0, 0.5, 1].forEach((frac) => {
@@ -813,11 +749,13 @@ function drawTrendChart(canvasId, dataPoints, color, options = {}) {
   });
   ctx.textAlign = "left";
 
-  // Tier-target threshold line, when one applies to this chart.
+  // Tier-target threshold line, when one applies to this chart. Always
+  // red — the one reserved "needs attention" color — regardless of the
+  // data line's own color, so the two are never confused.
   if (options.thresholdValue) {
     const ty = topPad + plotHeight * (1 - options.thresholdValue / divisor);
     ctx.save();
-    ctx.strokeStyle = "#ae3b2e";
+    ctx.strokeStyle = "#dc2626";
     ctx.setLineDash([4, 3]);
     ctx.lineWidth = 1.2;
     ctx.beginPath();
@@ -828,7 +766,7 @@ function drawTrendChart(canvasId, dataPoints, color, options = {}) {
     // Left-aligned, just below the line — the peak annotation owns the
     // top-right corner, so this avoids colliding with it even when the
     // threshold sits near the top of the chart.
-    ctx.fillStyle = "#ae3b2e";
+    ctx.fillStyle = "#dc2626";
     ctx.font = "10px 'IBM Plex Mono', monospace";
     ctx.fillText(options.thresholdLabel || "target", leftPad + 4, ty + 11);
   }
@@ -849,11 +787,11 @@ function drawTrendChart(canvasId, dataPoints, color, options = {}) {
   ctx.lineTo(leftPad + plotWidth, topPad + plotHeight);
   ctx.lineTo(leftPad, topPad + plotHeight);
   ctx.closePath();
-  ctx.fillStyle = color + "26"; // ~15% opacity fill under the line
+  ctx.fillStyle = color + "1f"; // ~12% opacity fill under the line
   ctx.fill();
 
   // Axis lines and the peak value, annotated directly on the chart.
-  ctx.strokeStyle = "#d2ccbd";
+  ctx.strokeStyle = "#d4d4d4";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(leftPad, topPad);
@@ -861,13 +799,13 @@ function drawTrendChart(canvasId, dataPoints, color, options = {}) {
   ctx.lineTo(leftPad + plotWidth, topPad + plotHeight);
   ctx.stroke();
 
-  ctx.fillStyle = "#1c1a16";
+  ctx.fillStyle = "#111827";
   ctx.font = "11px 'IBM Plex Mono', monospace";
   ctx.textAlign = "right";
   ctx.fillText(`peak: ${peak}`, width - rightPad, topPad - 4);
   ctx.textAlign = "left";
 
-  ctx.fillStyle = "#8b8578";
+  ctx.fillStyle = "#9ca3af";
   ctx.font = "10px 'IBM Plex Sans', sans-serif";
   ctx.fillText("earlier", leftPad, height - 4);
   ctx.textAlign = "right";
@@ -898,7 +836,9 @@ function renderImpactTab(data) {
   if (waitHistory.length > MAX_TREND_POINTS) waitHistory.shift();
   if (breachHistory.length > MAX_TREND_POINTS) breachHistory.shift();
 
-  drawTrendChart("chart-wait", waitHistory, ACCENT_COLOR, {
+  // Charcoal, not accent red — the threshold line is red, so the data
+  // line itself needs a neutral color to stay visually distinct from it.
+  drawTrendChart("chart-wait", waitHistory, "#111827", {
     thresholdValue: TIER2_TARGET_MINUTES,
     thresholdLabel: "Tier 2 target (10 min)",
   });
