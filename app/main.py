@@ -1,4 +1,4 @@
-"""EDFlow backend — the FastAPI server.
+"""WayPoint Allocations backend — the FastAPI server.
 
 Run with:  uvicorn app.main:app --reload
 """
@@ -28,7 +28,7 @@ from app.seed import seed, seed_if_empty
 from app.session_summary import build_session_summary
 from app import surge
 
-app = FastAPI(title="EDFlow")
+app = FastAPI(title="WayPoint Allocations")
 
 
 @app.on_event("startup")
@@ -344,7 +344,7 @@ def _client_ip(request: Request):
 
 @app.post("/api/assistant")
 def api_assistant(payload: AssistantRequest, request: Request):
-    """Ask the EDFlow assistant a question about the current simulated
+    """Ask the WayPoint assistant a question about the current simulated
     state. Never performs an action itself, never gives medical advice,
     and always answers from the same shared session summary and live
     state the dashboard itself uses — see app/assistant.py.

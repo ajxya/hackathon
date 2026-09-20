@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EDFlow — ED Operations Dashboard</title>
+  <title>WayPoint Allocations — ED Operations Dashboard</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
@@ -29,14 +29,14 @@
   </div>
 
   <div id="narrow-screen-banner" class="narrow-screen-banner">
-    <span>EDFlow is designed for desktop.</span>
+    <span>WayPoint Allocations is designed for desktop.</span>
     <button type="button" id="dismiss-narrow-banner">Dismiss</button>
   </div>
 
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
-        <span class="sidebar-wordmark">EDFlow</span>
+        <span class="sidebar-wordmark">WayPoint Allocations</span>
         <button id="sidebar-collapse-toggle" class="sidebar-collapse-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">
           <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5.5 8l4.5 5"/></svg>
         </button>
@@ -296,11 +296,11 @@
       </section>
 
       <section class="breach-breakdown">
-        <h2>Impact of EDFlow <span class="simulated-badge">Simulated comparison</span></h2>
+        <h2>Impact of WayPoint <span class="simulated-badge">Simulated comparison</span></h2>
         <p class="impact-baseline-definition" id="impact-baseline-definition"></p>
         <div id="impact-no-intervention" class="impact-no-intervention hidden">
           No recommendations have been applied yet this session, so there's nothing to compare —
-          EDFlow and the baseline are identical so far.
+          WayPoint and the baseline are identical so far.
         </div>
         <div id="impact-content" class="hidden">
           <p class="impact-headline" id="impact-headline"></p>
@@ -308,8 +308,8 @@
             <thead>
               <tr>
                 <th>Metric</th>
-                <th>Without EDFlow</th>
-                <th>With EDFlow</th>
+                <th>Without WayPoint</th>
+                <th>With WayPoint</th>
                 <th>Difference</th>
               </tr>
             </thead>
@@ -372,14 +372,14 @@
           <a href="#ref-relocation-rules">Relocation rules</a>
           <a href="#ref-simulated-data">Simulated data</a>
           <a href="#ref-situation-report">Situation report</a>
-          <a href="#ref-edflow-assistant">EDFlow Assistant</a>
-          <a href="#ref-impact-of-edflow">Impact of EDFlow</a>
+          <a href="#ref-edflow-assistant">WayPoint Assistant</a>
+          <a href="#ref-impact-of-edflow">Impact of WayPoint</a>
         </nav>
 
       <section class="breach-breakdown reference-content">
-        <h2>How EDFlow Works</h2>
+        <h2>How WayPoint Allocations Works</h2>
         <p class="how-it-works-text">
-          EDFlow is a rules-based decision-support demo for emergency
+          WayPoint Allocations is a rules-based decision-support demo for emergency
           department surge management. Nothing here is a real clinical
           tool — every patient, injury, and nearby facility is synthetic,
           and every recommendation comes from simple, transparent
@@ -388,7 +388,7 @@
 
         <h3 id="ref-simulated-clock">The simulated clock</h3>
         <p class="how-it-works-text">
-          EDFlow runs on a compressed clock: 1 real second = 1 simulated
+          WayPoint runs on a compressed clock: 1 real second = 1 simulated
           minute. Every wait time, length of stay, and target on this page
           is stated in that simulated time — a "10 minute target" plays out
           over 10 real seconds. This is also what makes a 30-second demo
@@ -417,7 +417,7 @@
         <h3 id="ref-escalation-ladder">The escalation ladder</h3>
         <p class="how-it-works-text">
           When a Tier 1–2 patient is past their target — or one is
-          projected to be soon (see below) — EDFlow escalates through four
+          projected to be soon (see below) — WayPoint escalates through four
           rungs, in order, only moving to the next one if the current one
           can't fully restore targets:
         </p>
@@ -431,13 +431,13 @@
           Every recommended quantity is need-based: it's sized from
           current load against realistic per-nurse, per-physician, and
           per-room ratios, then capped at what's actually
-          available — EDFlow will never recommend more nurses, rooms, or
+          available — WayPoint will never recommend more nurses, rooms, or
           beds than the reserve it's drawing from actually has.
         </p>
 
         <h3 id="ref-proactive-projection">Proactive breach projection</h3>
         <p class="how-it-works-text">
-          EDFlow doesn't only react after a Tier 1–2 patient has already
+          WayPoint doesn't only react after a Tier 1–2 patient has already
           missed their target — it also watches how fast beds are filling
           and projects when they'll run out entirely, which is the moment
           the next Tier 1–2 arrival would breach (Tier 1's target is
@@ -463,7 +463,7 @@
           <li>Tier 1 patients are never relocated.</li>
           <li>Lower-tier ambulance arrivals (Tiers 3–5) are relocated first.</li>
           <li>Destinations are chosen by capability match, then estimated wait for that patient's tier.</li>
-          <li>EDFlow never relocates a patient to a facility that is currently red.</li>
+          <li>WayPoint never relocates a patient to a facility that is currently red.</li>
           <li>Relocation only ever happens with explicit user approval — nothing here is automatic.</li>
         </ul>
 
@@ -473,10 +473,10 @@
           urgent care sites) are entirely synthetic and randomly generated.
           Nearby facilities run their own simplified simulation that drifts
           independently over time, so they don't all change together.
-          Nothing in EDFlow reflects a real hospital, real patients, or
+          Nothing in WayPoint reflects a real hospital, real patients, or
           real capacity. The recommendation engine above is, and remains,
           entirely rules-based — there is no machine-learning model behind
-          it anywhere in EDFlow.
+          it anywhere in WayPoint.
         </p>
 
         <h3 id="ref-situation-report">Situation report</h3>
@@ -488,7 +488,7 @@
           and can never disagree with what's on screen.
         </p>
 
-        <h3 id="ref-edflow-assistant">EDFlow Assistant</h3>
+        <h3 id="ref-edflow-assistant">WayPoint Assistant</h3>
         <p class="how-it-works-text">
           The chat button in the bottom-right corner is a small AI-backed
           assistant that explains the current simulated state and the
@@ -502,14 +502,14 @@
           about this simulated dashboard, not a real patient or hospital.
         </p>
 
-        <h3 id="ref-impact-of-edflow">Impact of EDFlow (simulated comparison)</h3>
+        <h3 id="ref-impact-of-edflow">Impact of WayPoint (simulated comparison)</h3>
         <p class="how-it-works-text">
           Behind the scenes, a second, parallel copy of this ED runs on
           the exact same arrivals — same patients, same tiers, same
           arrival times, same length of stay — but never gets a float
           nurse, an overflow bed, or a relocation. It represents this ED
           using only its own staff and beds. The Impact tab and situation
-          report compare the two to show what EDFlow's recommendations
+          report compare the two to show what WayPoint's recommendations
           actually changed. Both copies use the same discharge logic and
           the same wait-time formulas as the rest of the dashboard, so the
           numbers reconcile everywhere — but the comparison itself is
@@ -638,13 +638,13 @@
   <!-- Assistant widget: a floating button + panel that sits outside the tab
        system entirely, so it's visible and stays open across every tab. -->
   <div id="assistant-widget">
-    <button id="assistant-toggle" class="assistant-toggle" aria-label="Open EDFlow assistant">
+    <button id="assistant-toggle" class="assistant-toggle" aria-label="Open WayPoint assistant">
       <svg viewBox="0 0 20 20" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h14a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H9l-3.5 3v-3H3a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1Z"/></svg>
     </button>
 
     <div id="assistant-panel" class="assistant-panel hidden">
       <div class="assistant-header">
-        <span>EDFlow Assistant <span class="simulated-badge">Simulated</span></span>
+        <span>WayPoint Assistant <span class="simulated-badge">Simulated</span></span>
         <div class="assistant-header-actions">
           <button id="assistant-clear" class="assistant-icon-button" title="Clear conversation" aria-label="Clear conversation">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5h9M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M4.5 4.5l.6 8.4a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.4"/></svg>

@@ -1,4 +1,4 @@
-// EDFlow dashboard frontend — fetches /state and fills in the page.
+// WayPoint dashboard frontend — fetches /state and fills in the page.
 
 const POLL_INTERVAL_MS = 2000;
 let fetchInProgress = false;
@@ -444,7 +444,7 @@ function initNetworkMap() {
     weight: 2,
   })
     .addTo(networkMap)
-    .bindPopup("<strong>EDFlow Emergency Department</strong><br>Home ED (you are here)");
+    .bindPopup("<strong>WayPoint Emergency Department</strong><br>Home ED (you are here)");
 }
 
 function renderNetworkMarkers(facilities) {
@@ -847,7 +847,7 @@ function renderImpactTab(data) {
   renderImpactComparison(data.impact);
 }
 
-// Impact of EDFlow: the with/without-EDFlow comparison card. Uses the
+// Impact of WayPoint: the with/without-WayPoint comparison card. Uses the
 // exact same `impact` object the situation report reads from
 // GET /api/session-summary, so the two never disagree.
 function renderImpactComparison(impact) {
@@ -867,9 +867,9 @@ function renderImpactComparison(impact) {
 
   const headline =
     impact.without_edflow.tier12_breach_minutes > 0
-      ? `EDFlow reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
+      ? `WayPoint reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
         `${impact.headline.patient_minutes_saved} patient-minutes of waiting.`
-      : `EDFlow saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
+      : `WayPoint saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
         `(no Tier 1-2 breaches occurred in either scenario).`;
   setText("impact-headline", headline);
 
@@ -1002,19 +1002,19 @@ function buildSituationReportText(summary) {
   if (!summary.impact.any_intervention_applied) {
     lines.push(
       "No recommendations have been applied yet this session, so there's nothing to compare — " +
-        "EDFlow and the baseline are identical so far."
+        "WayPoint and the baseline are identical so far."
     );
   } else {
     const impact = summary.impact;
     lines.push(
       impact.without_edflow.tier12_breach_minutes > 0
-        ? `EDFlow reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
+        ? `WayPoint reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
           `${impact.headline.patient_minutes_saved} patient-minutes of waiting.`
-        : `EDFlow saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
+        : `WayPoint saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
           `(no Tier 1-2 breaches occurred in either scenario).`
     );
     lines.push("");
-    lines.push("  Metric                          Without EDFlow   With EDFlow   Difference");
+    lines.push("  Metric                          Without WayPoint   With WayPoint   Difference");
     const impactRows = [
       ["Avg wait (min)", "avg_wait_minutes"],
       ["Peak avg wait (min)", "peak_avg_wait_minutes"],
@@ -1129,7 +1129,7 @@ function buildReportImpactSection(impact) {
         "div",
         "impact-no-intervention",
         "No recommendations have been applied yet this session, so there's nothing to compare — " +
-          "EDFlow and the baseline are identical so far."
+          "WayPoint and the baseline are identical so far."
       )
     );
     return fragment;
@@ -1137,9 +1137,9 @@ function buildReportImpactSection(impact) {
 
   const headlineText =
     impact.without_edflow.tier12_breach_minutes > 0
-      ? `EDFlow reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
+      ? `WayPoint reduced Tier 1-2 breach time by ${impact.headline.breach_pct_reduction}% and saved ` +
         `${impact.headline.patient_minutes_saved} patient-minutes of waiting.`
-      : `EDFlow saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
+      : `WayPoint saved ${impact.headline.patient_minutes_saved} patient-minutes of waiting ` +
         `(no Tier 1-2 breaches occurred in either scenario).`;
   fragment.appendChild(el("p", "impact-headline", headlineText));
 
@@ -1147,7 +1147,7 @@ function buildReportImpactSection(impact) {
   table.className = "breach-table impact-table";
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
-  ["Metric", "Without EDFlow", "With EDFlow", "Difference"].forEach((h) => headRow.appendChild(el("th", null, h)));
+  ["Metric", "Without WayPoint", "With WayPoint", "Difference"].forEach((h) => headRow.appendChild(el("th", null, h)));
   thead.appendChild(headRow);
   table.appendChild(thead);
 
@@ -1280,7 +1280,7 @@ function renderSituationReportDoc(summary) {
   );
   container.appendChild(outcome);
 
-  const impactHeading = el("h3", null, "Impact of EDFlow ");
+  const impactHeading = el("h3", null, "Impact of WayPoint ");
   impactHeading.appendChild(el("span", "simulated-badge", "Simulated comparison"));
   container.appendChild(impactHeading);
   container.appendChild(buildReportImpactSection(summary.impact));
@@ -1859,7 +1859,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Narrow-screen notice (Step 5): EDFlow's layout is desktop-first: below
+// Narrow-screen notice (Step 5): WayPoint's layout is desktop-first: below
 // 900px the console grids stack into a single column instead of
 // breaking or scrolling horizontally, but it's still worth telling the
 // user this is a desktop-designed app. Dismissing it is remembered for

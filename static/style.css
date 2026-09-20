@@ -212,6 +212,7 @@ html, body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  border-top: 3px solid var(--color-accent);
 }
 
 /* --- Sidebar --- */
@@ -237,16 +238,16 @@ html, body {
   padding: var(--space-05);
   flex-shrink: 0;
   min-height: 32px;
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: 2px solid var(--color-accent);
 }
 
 .sidebar-wordmark {
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  color: var(--color-ink);
+  line-height: var(--leading-tight);
+  white-space: normal;
+  color: var(--color-accent);
 }
 
 .sidebar.collapsed .sidebar-wordmark {
@@ -562,9 +563,11 @@ html, body {
 
 .breach-breakdown h2 {
   margin: 0 0 var(--space-04);
+  padding-bottom: var(--space-03);
+  border-bottom: 2px solid var(--color-accent);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
-  color: var(--color-ink-muted);
+  color: var(--color-ink);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   display: flex;
@@ -655,7 +658,7 @@ html, body {
   color: var(--color-ink-muted);
   font-weight: var(--weight-semibold);
   padding: var(--space-03) var(--space-03);
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: 2px solid var(--color-accent);
 }
 
 .breach-table td {
@@ -797,9 +800,9 @@ html, body {
   font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--color-ink-muted);
-  background: var(--color-bg);
-  border: var(--border-width) solid var(--color-border);
+  color: var(--color-accent);
+  background: var(--color-accent-tint);
+  border: var(--border-width) solid var(--color-accent);
   border-radius: var(--radius-pill);
   padding: var(--space-01) var(--space-04);
 }
@@ -1022,11 +1025,12 @@ html, body {
   justify-content: space-between;
   gap: var(--space-03);
   padding: var(--space-03) var(--space-05);
-  border-bottom: var(--border-width) solid var(--color-border);
-  background: var(--color-panel-sunken);
+  border-bottom: var(--border-width) solid var(--color-border-strong);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-accent-tint);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  color: var(--color-ink-muted);
+  color: var(--color-ink);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -1195,10 +1199,9 @@ html, body {
   font-weight: var(--weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--color-ink-muted);
-  background: var(--color-panel-sunken);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  background: var(--color-accent-tint);
+  border-radius: var(--radius-pill);
   padding: var(--space-01) var(--space-04);
   margin-bottom: var(--space-03);
 }
@@ -1350,21 +1353,26 @@ html, body {
   top: 0;
   z-index: 1;
   text-align: left;
-  background: var(--color-panel-sunken);
-  color: var(--color-ink-muted);
+  background: var(--color-accent-tint);
+  border-bottom: 2px solid var(--color-accent);
+  color: var(--color-ink);
   font-weight: var(--weight-semibold);
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   padding: var(--space-03) var(--space-04);
-  border-bottom: var(--border-width) solid var(--color-border);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
 }
 
 .patients-table thead th:hover {
-  color: var(--color-ink);
+  color: var(--color-accent);
+}
+
+.patients-table thead th.sort-asc,
+.patients-table thead th.sort-desc {
+  color: var(--color-accent);
 }
 
 .patients-table thead th::after {
@@ -1559,7 +1567,9 @@ html, body {
    without the sortable-column affordances this static reference table
    doesn't need. */
 .reference-tier-table thead th {
-  background: var(--color-panel-sunken);
+  background: var(--color-accent-tint);
+  border-bottom: 2px solid var(--color-accent);
+  color: var(--color-ink);
   text-transform: uppercase;
   font-size: var(--text-xs);
   letter-spacing: 0.03em;
