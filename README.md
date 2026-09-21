@@ -1,4 +1,4 @@
-# EDFlow — Emergency Department Operations Dashboard
+# WayPoint Allocations- Emergency Department Operations Dashboard
 
 A hackathon project that simulates an ED's real-time operational state
 (patients, staff, rooms, beds), calculates resource utilization, and flags
